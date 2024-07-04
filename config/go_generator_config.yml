@@ -1,0 +1,5 @@
+package: ubicloud_client
+generate:
+  client: true
+  models: true
+output: internal/generated/ubicloud_client/client.go
