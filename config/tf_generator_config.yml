@@ -1,0 +1,130 @@
+provider:
+  name: ubicloud
+data_sources:
+  firewall:
+    read:
+      path: /project/{project_id}/firewall/{firewall_id}
+      method: GET
+    schema:
+      attributes:
+        aliases:
+          firewall_id: id
+  firewall_rule:
+    read:
+      path: /project/{project_id}/firewall/{firewall_id}/firewall-rule/{firewall_rule_id}
+      method: GET
+    schema:
+      attributes:
+        aliases:
+          firewall_rule_id: id
+  private_subnet:
+    read:
+      path: /project/{project_id}/location/{location}/private-subnet/{private_subnet_name}
+      method: GET
+    schema:
+      attributes:
+        aliases:
+          private_subnet_name: name
+  project:
+    read:
+      path: /project/{project_id}
+      method: GET
+    schema:
+      attributes:
+        aliases:
+          project_id: id
+  vm:
+    read:
+      path: /project/{project_id}/location/{location}/vm/{vm_name}
+      method: GET
+    schema:
+      attributes:
+        aliases:
+          vm_name: name
+  postgres:
+    read:
+      path: /project/{project_id}/location/{location}/postgres/{postgres_database_name}
+      method: GET
+    schema:
+      attributes:
+        aliases:
+          postgres_database_name: name
+          vm_size: size
+resources:
+  firewall:
+    create:
+      path: /project/{project_id}/firewall
+      method: POST
+    read:
+      path: /project/{project_id}/firewall/{firewall_id}
+      method: GET
+    schema:
+      attributes:
+        aliases:
+          firewall_id: id
+  firewall_rule:
+    create:
+      path: /project/{project_id}/firewall/{firewall_id}/firewall-rule
+      method: POST
+    read:
+      path: /project/{project_id}/firewall/{firewall_id}/firewall-rule/{firewall_rule_id}
+      method: GET
+    schema:
+      attributes:
+        aliases:
+          firewall_rule_id: id
+  vm:
+    create:
+      path: /project/{project_id}/location/{location}/vm/{vm_name}
+      method: POST
+    read:
+      path: /project/{project_id}/location/{location}/vm/{vm_name}
+      method: GET
+    schema:
+      attributes:
+        aliases:
+          vm_name: name
+      ignores:
+        - ip4
+        - ip6
+        - state
+        - storage_size_gb
+  postgres:
+    create:
+      path: /project/{project_id}/location/{location}/postgres/{postgres_database_name}
+      method: POST
+    read:
+      path: /project/{project_id}/location/{location}/postgres/{postgres_database_name}
+      method: GET
+    schema:
+      attributes:
+        aliases:
+          postgres_database_name: name
+          vm_size: size
+      ignores:
+        - connection_string
+        - earliest_restore_time
+        - latest_restore_time
+        - state
+  private_subnet:
+    create:
+      path: /project/{project_id}/location/{location}/private-subnet/{private_subnet_name}
+      method: POST
+    read:
+      path: /project/{project_id}/location/{location}/private-subnet/{private_subnet_name}
+      method: GET
+    schema:
+      attributes:
+        aliases:
+          private_subnet_name: name
+  project:
+    create:
+      path: /project
+      method: POST
+    read:
+      path: /project/{project_id}
+      method: GET
+    schema:
+      attributes:
+        aliases:
+          project_id: id
