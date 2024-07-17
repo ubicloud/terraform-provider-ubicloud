@@ -854,6 +854,169 @@ paths:
           description: Firewall deleted successfully
         '401':
           description: Unauthorized
+
+# LOAD BALANCER
+  /project/{project_id}/load-balancer/{load_balancer_name}:
+    parameters:
+      - $ref: '#/components/parameters/project_id'
+      - $ref: '#/components/parameters/load_balancer_name'
+    post:
+      tags: 
+        - Load Balancer
+      summary: Create a new load balancer
+      operationId: createLoadBalancer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                private_subnet_id:
+                  type: string
+                  description: ID of the private subnet
+                algorithm:
+                  type: string
+                  enum: [round_robin, hash_based]
+                  description: Algorithm of the load balancer
+                health_check_endpoint:
+                  type: string
+                  example: /up
+                  description: Health check endpoint
+                src_port:
+                  type: integer
+                  description: Source port
+                dst_port:
+                  type: integer
+                  description: Destination port
+                vms:
+                  type: array
+                  description: List of VM IDs
+                  items: 
+                    type: string
+              required:
+                - name
+                - private_subnet_id
+                - algorithm
+                - health_check_endpoint
+                - src_port
+                - dst_port
+      responses:
+        '200':
+          description: Load Balancer created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoadBalancer'
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+    get:
+      tags:
+        - Load Balancer
+      summary: List all load balancers created under the given project ID and visible to logged in user
+      operationId: listProjectLoadBalancers
+      parameters:
+        - $ref: '#/components/parameters/project_id'
+        - $ref: '#/components/parameters/start_after'
+        - $ref: '#/components/parameters/page_size'
+        - $ref: '#/components/parameters/order_column'
+      responses:
+        '200':
+          description: Return the list of all load balancers visible created under the given project and visible to the logged in user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LoadBalancer'
+                  count:
+                    type: integer
+        '401':
+          description: Unauthorized
+  /project/{project_id}/location/{location}/load-balancer/{load_balancer_name}:
+    parameters:
+      - $ref: '#/components/parameters/project_id'
+      - $ref: '#/components/parameters/location'
+      - $ref: '#/components/parameters/load_balancer_name'
+    get:
+      tags: 
+        - Load Balancer
+      summary: Get details of a specific load balancer in a location
+      operationId: getLoadBalancerDetails
+      responses:
+        '200':
+          description: Details of the load balancer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoadBalancer'
+        '401':
+          description: Unauthorized
+    delete:
+      tags: 
+        - Load Balancer
+      summary: Delete a specific load balancer
+      operationId: deleteLoadBalancer
+      responses:
+        '204':
+          description: Load Balancer deleted successfully
+        '401':
+          description: Unauthorized
+    patch:
+      tags: 
+        - Load Balancer
+      summary: Update a specific load balancer
+      operationId: updateLoadBalancer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                algorithm:
+                  type: string
+                  enum: [round_robin, hash_based]
+                  description: Algorithm of the load balancer
+                health_check_endpoint:
+                  type: string
+                  example: /up
+                  description: Health check endpoint
+                src_port:
+                  type: integer
+                  description: Source port
+                dst_port:
+                  type: integer
+                  description: Destination port
+                vms:
+                  type: array
+                  description: List of VM IDs
+                  items: 
+                    type: string
+              required:
+                - algorithm
+                - health_check_endpoint
+                - src_port
+                - dst_port
+                - vms
+      responses:
+        '200':
+          description: Load Balancer updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoadBalancer'
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+        '404':
+          description: Resource not found
 components:
   securitySchemes:
     BearerAuth:    # Arbitrary name for the security scheme
@@ -995,6 +1158,44 @@ components:
         port_range:
           type: string
           description: Port range of the firewall rule
+    LoadBalancer:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 1bw12ouhqjdy4g72xng1ubkda6
+          description: ID of the load balancer
+        name:
+          type: string
+          example: "my-load-balancer"
+          description: Name of the load balancer
+        hostname:
+          type: string
+          description: Hostname of the load balancer
+        subnet:
+          type: string
+          description: Subnet of the load balancer
+        algorithm:
+          type: string
+          description: Algorithm of the load balancer
+        health_check_endpoint:
+          type: string
+          description: Health check endpoint
+        src_port:
+          type: integer
+          description: Source port
+        dst_port:
+          type: integer
+          description: Destination port
+        vms:
+          type: array
+          description: List of VM IDs
+          items: 
+            type: string
+        location:
+          type: string
+          example: "eu-north-h1"
+          description: Location of the Load Balancer
     Nic:
       type: object
       properties:
@@ -1162,6 +1363,13 @@ components:
       schema:
         type: string
       description: ID of the firewall rule
+    load_balancer_name:
+      name: load_balancer_name
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Load balancer name
     location:
       name: location
       in: path
