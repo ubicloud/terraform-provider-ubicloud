@@ -50,6 +50,14 @@ data_sources:
         aliases:
           postgres_database_name: name
           vm_size: size
+  load_balancer:
+    read:
+      path: /project/{project_id}/location/{location}/load-balancer/{load_balancer_name}
+      method: GET
+    schema:
+      attributes:
+        aliases:
+          load_balancer_name: name
 resources:
   firewall:
     create:
@@ -117,6 +125,17 @@ resources:
       attributes:
         aliases:
           private_subnet_name: name
+  load_balancer:
+    create:
+      path: /project/{project_id}/load-balancer/{load_balancer_name}
+      method: POST
+    read:
+      path: /project/{project_id}/location/{location}/load-balancer/{load_balancer_name}
+      method: GET
+    schema:
+      attributes:
+        aliases:
+          load_balancer_name: name
   project:
     create:
       path: /project
