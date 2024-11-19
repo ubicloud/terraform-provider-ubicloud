@@ -722,9 +722,10 @@ paths:
           description: Unauthorized
 
 # FIREWALL RULES
-  /project/{project_id}/firewall/{firewall_id}/firewall-rule:
+  /project/{project_id}/location/{location}/firewall/{firewall_id}/firewall-rule:
     parameters:
       - $ref: '#/components/parameters/project_id'
+      - $ref: '#/components/parameters/location'
       - $ref: '#/components/parameters/firewall_id'
     post:
       tags: 
@@ -761,9 +762,10 @@ paths:
           description: Invalid request
         '401':
           description: Unauthorized
-  /project/{project_id}/firewall/{firewall_id}/firewall-rule/{firewall_rule_id}:
+  /project/{project_id}/location/{location}/firewall/{firewall_id}/firewall-rule/{firewall_rule_id}:
     parameters:
       - $ref: '#/components/parameters/project_id'
+      - $ref: '#/components/parameters/location'
       - $ref: '#/components/parameters/firewall_id'
       - $ref: '#/components/parameters/firewall_rule_id'    
     get:
@@ -792,9 +794,10 @@ paths:
           description: Unauthorized
 
 # FIREWALL
-  /project/{project_id}/firewall:
+  /project/{project_id}/location/{location}/firewall:
     parameters:
       - $ref: '#/components/parameters/project_id'
+      - $ref: '#/components/parameters/location'
     post:
       tags: 
         - Firewall
@@ -826,9 +829,10 @@ paths:
           description: Invalid request
         '401':
           description: Unauthorized
-  /project/{project_id}/firewall/{firewall_id}:
+  /project/{project_id}/location/{location}/firewall/{firewall_id}:
     parameters:
       - $ref: '#/components/parameters/project_id'
+      - $ref: '#/components/parameters/location'
       - $ref: '#/components/parameters/firewall_id'  
     get:
       tags: 
@@ -975,6 +979,9 @@ components:
         name:
           type: string
           description: Name of the firewall
+        location:
+          type: string
+          description: Location of the firewall
         description:
           type: string
           description: Description of the firewall
