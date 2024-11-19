@@ -11,6 +11,7 @@ func TestAccFirewallRuleDataSource(t *testing.T) {
 	resourceConfig := fmt.Sprintf(`
     resource "ubicloud_firewall" "testacc" {
       project_id  = "%s"
+			location    = "%s"
       name        = "tf-testacc"
       description = "Terraform acceptance testing"
     }
@@ -28,23 +29,26 @@ func TestAccFirewallRuleDataSource(t *testing.T) {
       cidr        = "0.0.0.0/0"
       port_range  = "22..22"
     }			
-    `, GetTestAccProjectId())
+    `, GetTestAccProjectId(), GetTestAccLocation())
 
 	dataConfig := `
     data "ubicloud_firewall_rule" "testaccfwr1" {
       project_id = ubicloud_firewall.testacc.project_id
+			location   = ubicloud_firewall.testacc.location
       firewall_id = ubicloud_firewall.testacc.id
       id = ubicloud_firewall_rule.testaccfwr1.id
     }
 
     data "ubicloud_firewall_rule" "testaccfwr2" {
       project_id = ubicloud_firewall.testacc.project_id
+			location   = ubicloud_firewall.testacc.location
       firewall_id = ubicloud_firewall.testacc.id
       id = ubicloud_firewall_rule.testaccfwr2.id
     }
       
     data "ubicloud_firewall" "testacc" {
       project_id = ubicloud_firewall.testacc.project_id
+			location   = ubicloud_firewall.testacc.location
       id = ubicloud_firewall.testacc.id
     }
     `
@@ -61,6 +65,7 @@ func TestAccFirewallRuleDataSource(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("data.ubicloud_firewall.testacc", "id"),
 					resource.TestCheckResourceAttr("data.ubicloud_firewall.testacc", "project_id", GetTestAccProjectId()),
+					resource.TestCheckResourceAttr("data.ubicloud_firewall.testacc", "location", GetTestAccLocation()),
 					resource.TestCheckResourceAttr("data.ubicloud_firewall.testacc", "name", "tf-testacc"),
 					resource.TestCheckResourceAttr("data.ubicloud_firewall.testacc", "description", "Terraform acceptance testing"),
 					resource.TestCheckResourceAttr("data.ubicloud_firewall.testacc", "firewall_rules.#", "2"),

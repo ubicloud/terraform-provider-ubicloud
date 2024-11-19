@@ -30,6 +30,7 @@ output "test_firewall" {
 
 - `firewall_id` (String) ID of the firewall
 - `id` (String) ID of the firewall rule
+- `location` (String) The Ubicloud location/region
 - `project_id` (String) ID of the project
 
 ### Read-Only

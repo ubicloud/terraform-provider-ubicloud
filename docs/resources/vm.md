@@ -33,6 +33,7 @@ variable "ssh_key" {
 
 resource "ubicloud_firewall" "example" {
   project_id  = var.project_id
+  location    = var.location
   name        = "example-firewall"
   description = "Example firewall"
 }
@@ -105,6 +106,7 @@ Read-Only:
 - `description` (String) Description of the firewall
 - `firewall_rules` (Attributes List) List of firewall rules (see [below for nested schema](#nestedatt--firewalls--firewall_rules))
 - `id` (String) ID of the firewall
+- `location` (String) Location of the firewall
 - `name` (String) Name of the firewall
 
 <a id="nestedatt--firewalls--firewall_rules"></a>

@@ -31,6 +31,7 @@ resource "ubicloud_firewall_rule" "ssh" {
 ### Optional
 
 - `firewall_id` (String) ID of the firewall
+- `location` (String) The Ubicloud location/region
 - `port_range` (String) Port range of the firewall rule
 - `project_id` (String) ID of the project
 

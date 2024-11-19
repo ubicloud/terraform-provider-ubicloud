@@ -45,8 +45,8 @@ resource "ubicloud_firewall_rule" "ssh" {
 
 ### Required
 
+- `location` (String) Location of the firewall
 - `name` (String) Name of the firewall
-- `location` (String) The Ubicloud location/region
 - `project_id` (String) ID of the project
 
 ### Optional
@@ -72,5 +72,5 @@ Read-Only:
 Import is supported using the following syntax:
 
 ```shell
-terraform import ubicloud_firewall.example <project_id>,<firewall_id>
+terraform import ubicloud_firewall.example <project_id>,<location>,<firewall_id>
 ```

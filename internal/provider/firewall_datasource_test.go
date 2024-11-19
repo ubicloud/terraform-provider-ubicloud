@@ -17,7 +17,7 @@ func TestAccFirewallDataSource(t *testing.T) {
 					fmt.Sprintf(`
         resource "ubicloud_firewall" "testacc" {
           project_id  = "%s"
-					location = "%s"
+					location    = "%s"
           name        = "tf-testacc"
           description = "Terraform acceptance testing"
         }

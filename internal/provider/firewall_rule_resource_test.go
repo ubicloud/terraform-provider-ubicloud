@@ -12,6 +12,7 @@ func TestAccFirewallRuleResource(t *testing.T) {
 	resourceConfig := fmt.Sprintf(`
     resource "ubicloud_firewall" "testacc" {
       project_id  = "%s"
+			location    = "%s"
       name        = "tf-testacc"
       description = "Terraform acceptance testing"
     }
@@ -22,7 +23,7 @@ func TestAccFirewallRuleResource(t *testing.T) {
       cidr        = "0.0.0.0/0"
       port_range  = "22..22"
     }			
-    `, GetTestAccProjectId())
+    `, GetTestAccProjectId(), GetTestAccLocation())
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -37,6 +38,7 @@ func TestAccFirewallRuleResource(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ubicloud_firewall.testacc", "id"),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "project_id", GetTestAccProjectId()),
+					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "location", GetTestAccLocation()),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "name", "tf-testacc"),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "description", "Terraform acceptance testing"),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "firewall_rules.#", "1"),
