@@ -12,6 +12,7 @@ variable "location" {
 
 resource "ubicloud_firewall" "example" {
   project_id  = var.project_id
+  location    = var.location
   name        = "example-firewall"
   description = "Description of firewall"
 }

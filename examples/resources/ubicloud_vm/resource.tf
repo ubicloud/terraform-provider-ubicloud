@@ -18,6 +18,7 @@ variable "ssh_key" {
 
 resource "ubicloud_firewall" "example" {
   project_id  = var.project_id
+  location    = var.location
   name        = "example-firewall"
   description = "Example firewall"
 }

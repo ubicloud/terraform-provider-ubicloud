@@ -19,8 +19,15 @@ variable "project_id" {
   default     = "pj01qy4sty1j7nycv8hfqmgy6t"
 }
 
+variable "location" {
+  description = "Ubicloud location"
+  type        = string
+  default     = "eu-central-h1"
+}
+
 data "ubicloud_firewall" "example" {
   project_id = var.project_id
+  location   = var.location
   id         = "fwk5tac59hjp4mgx1w2s0r4a6v"
 }
 
@@ -35,6 +42,7 @@ output "example_firewall" {
 ### Required
 
 - `id` (String) ID of the firewall
+- `location` (String) The Ubicloud location/region
 - `project_id` (String) ID of the project
 
 ### Read-Only

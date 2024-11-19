@@ -1,1 +1,1 @@
-terraform import ubicloud_firewall.example <project_id>,<firewall_id>
+terraform import ubicloud_firewall.example <project_id>,<location>,<firewall_id>

@@ -17,12 +17,14 @@ func TestAccFirewallResource(t *testing.T) {
 					fmt.Sprintf(`
         resource "ubicloud_firewall" "testacc" {
           project_id  = "%s"
+					location    = "%s"
           name        = "tf-testacc"
           description = "Terraform acceptance testing"
-        }`, GetTestAccProjectId()),
+        }`, GetTestAccProjectId(), GetTestAccLocation()),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ubicloud_firewall.testacc", "id"),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "project_id", GetTestAccProjectId()),
+					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "location", GetTestAccLocation()),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "name", "tf-testacc"),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "description", "Terraform acceptance testing"),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "firewall_rules.#", "0"),
@@ -32,7 +34,7 @@ func TestAccFirewallResource(t *testing.T) {
 			{
 				ResourceName:        "ubicloud_firewall.testacc",
 				ImportState:         true,
-				ImportStateIdPrefix: fmt.Sprintf("%s,", GetTestAccProjectId()),
+				ImportStateIdPrefix: fmt.Sprintf("%s,%s,", GetTestAccProjectId(), GetTestAccLocation()),
 				ImportStateVerify:   true,
 			},
 		},

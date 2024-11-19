@@ -27,6 +27,7 @@ variable "location" {
 
 resource "ubicloud_firewall" "example" {
   project_id  = var.project_id
+  location    = var.location
   name        = "example-firewall"
   description = "Description of firewall"
 }
@@ -45,6 +46,7 @@ resource "ubicloud_firewall_rule" "ssh" {
 ### Required
 
 - `name` (String) Name of the firewall
+- `location` (String) The Ubicloud location/region
 - `project_id` (String) ID of the project
 
 ### Optional
