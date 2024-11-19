@@ -14,9 +14,10 @@ Get information about a Ubicloud firewall rule.
 
 ```terraform
 data "ubicloud_firewall_rule" "example" {
-  project_id  = "pj01qy4sty1j7nycv8hfqmgy6t"
-  firewall_id = "fwk5tac59hjp4mgx1w2s0r4a6v"
-  id          = "fr9wf3tra2r23nvsrcm5jkxb8d"
+  project_id    = "pj01qy4sty1j7nycv8hfqmgy6t"
+  location      = "eu-central-h1"
+  firewall_name = "tf-testacc"
+  id            = "fr9wf3tra2r23nvsrcm5jkxb8d"
 }
 output "test_firewall" {
   value = data.ubicloud_firewall_rule.example
@@ -28,8 +29,9 @@ output "test_firewall" {
 
 ### Required
 
-- `firewall_id` (String) ID of the firewall
+- `firewall_name` (String) Name of the firewall
 - `id` (String) ID of the firewall rule
+- `location` (String) The Ubicloud location/region
 - `project_id` (String) ID of the project
 
 ### Read-Only

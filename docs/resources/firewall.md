@@ -27,15 +27,17 @@ variable "location" {
 
 resource "ubicloud_firewall" "example" {
   project_id  = var.project_id
+  location    = var.location
   name        = "example-firewall"
   description = "Description of firewall"
 }
 
 resource "ubicloud_firewall_rule" "ssh" {
-  project_id  = var.project_id
-  firewall_id = ubicloud_firewall.example.id
-  cidr        = "0.0.0.0/0"
-  port_range  = "22..22"
+  project_id    = var.project_id
+  location      = var.location
+  firewall_name = ubicloud_firewall.example.name
+  cidr          = "0.0.0.0/0"
+  port_range    = "22..22"
 }
 ```
 
@@ -44,6 +46,7 @@ resource "ubicloud_firewall_rule" "ssh" {
 
 ### Required
 
+- `location` (String) Location of the firewall
 - `name` (String) Name of the firewall
 - `project_id` (String) ID of the project
 
@@ -70,5 +73,5 @@ Read-Only:
 Import is supported using the following syntax:
 
 ```shell
-terraform import ubicloud_firewall.example <project_id>,<firewall_id>
+terraform import ubicloud_firewall.example <project_id>,<location>,<firewall_name>
 ```

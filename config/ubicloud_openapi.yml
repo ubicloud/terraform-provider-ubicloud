@@ -722,10 +722,11 @@ paths:
           description: Unauthorized
 
 # FIREWALL RULES
-  /project/{project_id}/firewall/{firewall_id}/firewall-rule:
+  /project/{project_id}/location/{location}/firewall/{firewall_name}/firewall-rule:
     parameters:
       - $ref: '#/components/parameters/project_id'
-      - $ref: '#/components/parameters/firewall_id'
+      - $ref: '#/components/parameters/location'
+      - $ref: '#/components/parameters/firewall_name'
     post:
       tags: 
         - Firewall Rule
@@ -738,10 +739,6 @@ paths:
             schema:
               type: object
               properties:
-                project_id:
-                  type: string
-                firewall_id:
-                  type: string
                 cidr:
                   type: string
                   description: CIDR of the firewall rule
@@ -761,10 +758,11 @@ paths:
           description: Invalid request
         '401':
           description: Unauthorized
-  /project/{project_id}/firewall/{firewall_id}/firewall-rule/{firewall_rule_id}:
+  /project/{project_id}/location/{location}/firewall/{firewall_name}/firewall-rule/{firewall_rule_id}:
     parameters:
       - $ref: '#/components/parameters/project_id'
-      - $ref: '#/components/parameters/firewall_id'
+      - $ref: '#/components/parameters/location'
+      - $ref: '#/components/parameters/firewall_name'
       - $ref: '#/components/parameters/firewall_rule_id'    
     get:
       tags: 
@@ -792,29 +790,26 @@ paths:
           description: Unauthorized
 
 # FIREWALL
-  /project/{project_id}/firewall:
+  /project/{project_id}/location/{location}/firewall/{firewall_name}:
     parameters:
       - $ref: '#/components/parameters/project_id'
+      - $ref: '#/components/parameters/location'
+      - $ref: '#/components/parameters/firewall_name'
     post:
       tags: 
         - Firewall
       summary: Create a new firewall
       operationId: createFirewall
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               type: object
               properties:
-                name:
-                  type: string
-                  description: Name of the firewall
                 description:
                   type: string
                   description: Description of the firewall
-              required:
-                - name
       responses:
         '200':
           description: Firewall created successfully
@@ -826,10 +821,6 @@ paths:
           description: Invalid request
         '401':
           description: Unauthorized
-  /project/{project_id}/firewall/{firewall_id}:
-    parameters:
-      - $ref: '#/components/parameters/project_id'
-      - $ref: '#/components/parameters/firewall_id'  
     get:
       tags: 
         - Firewall
@@ -975,6 +966,9 @@ components:
         name:
           type: string
           description: Name of the firewall
+        location:
+          type: string
+          description: Location of the firewall
         description:
           type: string
           description: Description of the firewall
@@ -1155,6 +1149,13 @@ components:
       schema:
         type: string
       description: ID of the firewall
+    firewall_name:
+      name: firewall_name
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Name of the firewall
     firewall_rule_id:
       name: firewall_rule_id
       in: path

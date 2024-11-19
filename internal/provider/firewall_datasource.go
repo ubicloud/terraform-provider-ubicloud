@@ -64,7 +64,7 @@ func (d *firewallDataSource) Read(ctx context.Context, req datasource.ReadReques
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Reading firewall: %s", firewallDataSourceLogIdentifier(&state)))
-	firewallResp, err := d.uc.client.GetFirewallDetailsWithResponse(ctx, state.ProjectId.ValueString(), state.Id.ValueString())
+	firewallResp, err := d.uc.client.GetFirewallDetailsWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Error reading firewall: %s", firewallDataSourceLogIdentifier(&state)),
@@ -83,6 +83,7 @@ func (d *firewallDataSource) Read(ctx context.Context, req datasource.ReadReques
 	assignStr(firewallResp.JSON200.Id, &state.Id)
 	assignStr(firewallResp.JSON200.Name, &state.Name)
 	assignStr(firewallResp.JSON200.Description, &state.Description)
+	assignStr(firewallResp.JSON200.Location, &state.Location)
 
 	firewallRulesListValue, fwRulesDiags := GetFirewallRulesState(ctx, firewallResp.JSON200.FirewallRules)
 	resp.Diagnostics.Append(fwRulesDiags...)
@@ -112,6 +113,7 @@ func GetFirewallsState(ctx context.Context, firewalls *[]ubicloud_client.Firewal
 
 			fw := datasource_vm.NewFirewallsValueMust(firewallsValue.AttributeTypes(ctx), map[string]attr.Value{
 				"id":             types.StringValue(*f.Id),
+				"location":       types.StringValue(*f.Location),
 				"name":           types.StringValue(*f.Name),
 				"description":    types.StringValue(*f.Description),
 				"firewall_rules": fwRules,
@@ -131,5 +133,5 @@ func GetFirewallsState(ctx context.Context, firewalls *[]ubicloud_client.Firewal
 }
 
 func firewallDataSourceLogIdentifier(state *datasource_firewall.FirewallModel) string {
-	return fmt.Sprintf("project_id=%s, firewall_id=%s", state.ProjectId.ValueString(), state.Id.ValueString())
+	return fmt.Sprintf("project_id=%s, location=%s, firewall_name=%s", state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString())
 }

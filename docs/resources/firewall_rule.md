@@ -14,10 +14,11 @@ Provides a Ubicloud FirewallRule resource. This can be used to create and delete
 
 ```terraform
 resource "ubicloud_firewall_rule" "ssh" {
-  project_id  = "pj01qy4sty1j7nycv8hfqmgy6t"
-  firewall_id = "fwk5tac59hjp4mgx1w2s0r4a6v"
-  cidr        = "0.0.0.0/0"
-  port_range  = "22..22"
+  project_id    = "pj01qy4sty1j7nycv8hfqmgy6t"
+  location      = "eu-central-1"
+  firewall_name = "tf-testacc"
+  cidr          = "0.0.0.0/0"
+  port_range    = "22..22"
 }
 ```
 
@@ -30,7 +31,8 @@ resource "ubicloud_firewall_rule" "ssh" {
 
 ### Optional
 
-- `firewall_id` (String) ID of the firewall
+- `firewall_name` (String) Name of the firewall
+- `location` (String) The Ubicloud location/region
 - `port_range` (String) Port range of the firewall rule
 - `project_id` (String) ID of the project
 
@@ -43,5 +45,5 @@ resource "ubicloud_firewall_rule" "ssh" {
 Import is supported using the following syntax:
 
 ```shell
-terraform import ubicloud_firewall_rule.example <project_id>,<firewall_id>,<rule_id>
+terraform import ubicloud_firewall_rule.example <project_id>,<location>,<firewall_name>,<rule_id>
 ```
