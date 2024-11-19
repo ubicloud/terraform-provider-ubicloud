@@ -21,7 +21,8 @@ variable "project_id" {
 
 data "ubicloud_firewall" "example" {
   project_id = var.project_id
-  id         = "fwk5tac59hjp4mgx1w2s0r4a6v"
+  location   = "eu-central-h1"
+  name       = "tf-testacc"
 }
 
 output "example_firewall" {
@@ -34,14 +35,15 @@ output "example_firewall" {
 
 ### Required
 
-- `id` (String) ID of the firewall
+- `location` (String) The Ubicloud location/region
+- `name` (String) Name of the firewall
 - `project_id` (String) ID of the project
 
 ### Read-Only
 
 - `description` (String) Description of the firewall
 - `firewall_rules` (Attributes List) List of firewall rules (see [below for nested schema](#nestedatt--firewall_rules))
-- `name` (String) Name of the firewall
+- `id` (String) ID of the firewall
 
 <a id="nestedatt--firewall_rules"></a>
 ### Nested Schema for `firewall_rules`

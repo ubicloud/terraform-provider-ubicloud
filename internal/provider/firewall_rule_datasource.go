@@ -66,7 +66,7 @@ func (d *firewallRuleDataSource) Read(ctx context.Context, req datasource.ReadRe
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Reading firewall rule: %s", firewallRuleDataSourceLogIdentifier(&state)))
-	firewallRuleResp, err := d.uc.client.GetFirewallRuleDetailsWithResponse(ctx, state.ProjectId.ValueString(), state.FirewallId.ValueString(), state.Id.ValueString())
+	firewallRuleResp, err := d.uc.client.GetFirewallRuleDetailsWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString(), state.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Error reading firewall rule: %s", firewallRuleDataSourceLogIdentifier(&state)),
@@ -117,5 +117,5 @@ func GetFirewallRulesState(ctx context.Context, firewallRules *[]ubicloud_client
 }
 
 func firewallRuleDataSourceLogIdentifier(state *datasource_firewall_rule.FirewallRuleModel) string {
-	return fmt.Sprintf("project_id=%s, firewall_id=%s, rule_id=%s", state.ProjectId.ValueString(), state.FirewallId.ValueString(), state.Id.ValueString())
+	return fmt.Sprintf("project_id=%s, location=%s, firewall_name=%s, rule_id=%s", state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString(), state.Id.ValueString())
 }

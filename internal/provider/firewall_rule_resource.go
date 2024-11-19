@@ -69,11 +69,11 @@ func (r *firewallRuleResource) Create(ctx context.Context, req resource.CreateRe
 		body.PortRange = state.PortRange.ValueStringPointer()
 	}
 
-	tflog.Debug(ctx, fmt.Sprintf("Creating firewall rule: project_id=%s, firewall_id: %s", state.ProjectId.ValueString(), state.FirewallId.ValueString()))
-	firewallRuleResp, err := r.uc.client.CreateFirewallRuleWithResponse(ctx, state.ProjectId.ValueString(), state.FirewallId.ValueString(), body)
+	tflog.Debug(ctx, fmt.Sprintf("Creating firewall rule: project_id=%s, location=%s, firewall_name: %s", state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString()))
+	firewallRuleResp, err := r.uc.client.CreateFirewallRuleWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			fmt.Sprintf("Error creating firewall rule: project_id=%s, firewall_id: %s", state.ProjectId.ValueString(), state.FirewallId.ValueString()),
+			fmt.Sprintf("Error creating firewall rule: project_id=%s, location=%s, firewall_name: %s", state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString()),
 			err.Error(),
 		)
 		return
@@ -82,7 +82,7 @@ func (r *firewallRuleResource) Create(ctx context.Context, req resource.CreateRe
 	if firewallRuleResp.StatusCode() != http.StatusOK {
 		resp.Diagnostics.AddError(
 			"Unexpected HTTP status code creating firewall rule",
-			fmt.Sprintf("Received %s creating new firewall rule: project_id=%s, firewall_id=%s. Details: %s", firewallRuleResp.Status(), state.ProjectId.ValueString(), state.FirewallId.ValueString(), firewallRuleResp.Body))
+			fmt.Sprintf("Received %s creating new firewall rule: project_id=%s, location=%s, firewall_name=%s. Details: %s", firewallRuleResp.Status(), state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString(), firewallRuleResp.Body))
 		return
 	}
 
@@ -102,7 +102,7 @@ func (r *firewallRuleResource) Read(ctx context.Context, req resource.ReadReques
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Reading firewall rule: %s", firewallRuleResourceLogIdentifier(&state)))
-	firewallRuleResp, err := r.uc.client.GetFirewallRuleDetailsWithResponse(ctx, state.ProjectId.ValueString(), state.FirewallId.ValueString(), state.Id.ValueString())
+	firewallRuleResp, err := r.uc.client.GetFirewallRuleDetailsWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString(), state.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Error reading firewall rule: %s", firewallRuleResourceLogIdentifier(&state)),
@@ -146,7 +146,7 @@ func (r *firewallRuleResource) Delete(ctx context.Context, req resource.DeleteRe
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Deleting firewall rule: %s", firewallRuleResourceLogIdentifier(&state)))
-	firewallRuleResp, err := r.uc.client.DeleteFirewallRuleWithResponse(ctx, state.ProjectId.ValueString(), state.FirewallId.ValueString(), state.Id.ValueString())
+	firewallRuleResp, err := r.uc.client.DeleteFirewallRuleWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString(), state.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Error deleting firewall rule: %s", firewallRuleResourceLogIdentifier(&state)),
@@ -166,19 +166,20 @@ func (r *firewallRuleResource) Delete(ctx context.Context, req resource.DeleteRe
 func (r *firewallRuleResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	idParts := strings.Split(req.ID, ",")
 
-	if len(idParts) != 3 || idParts[0] == "" || idParts[1] == "" || idParts[2] == "" {
+	if len(idParts) != 4 || idParts[0] == "" || idParts[1] == "" || idParts[2] == "" || idParts[3] == "" {
 		resp.Diagnostics.AddError(
 			"Unexpected Import Identifier",
-			fmt.Sprintf("Expected import identifier with format: project_id,firewall_id,id. Got: %q", req.ID),
+			fmt.Sprintf("Expected import identifier with format: project_id,location,firewall_name,id. Got: %q", req.ID),
 		)
 		return
 	}
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), idParts[0])...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("firewall_id"), idParts[1])...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[2])...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("location"), idParts[1])...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("firewall_name"), idParts[2])...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[3])...)
 }
 
 func firewallRuleResourceLogIdentifier(state *resource_firewall_rule.FirewallRuleModel) string {
-	return fmt.Sprintf("project_id=%s, firewall_id=%s, rule_id=%s", state.ProjectId.ValueString(), state.FirewallId.ValueString(), state.Id.ValueString())
+	return fmt.Sprintf("project_id=%s, location=%s, firewall_name=%s, rule_id=%s", state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString(), state.Id.ValueString())
 }

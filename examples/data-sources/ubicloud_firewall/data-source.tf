@@ -7,7 +7,8 @@ variable "project_id" {
 
 data "ubicloud_firewall" "example" {
   project_id = var.project_id
-  id         = "fwk5tac59hjp4mgx1w2s0r4a6v"
+  location   = "eu-central-h1"
+  name       = "tf-testacc"
 }
 
 output "example_firewall" {
