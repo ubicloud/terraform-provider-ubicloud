@@ -112,6 +112,7 @@ func GetFirewallsState(ctx context.Context, firewalls *[]ubicloud_client.Firewal
 
 			fw := datasource_vm.NewFirewallsValueMust(firewallsValue.AttributeTypes(ctx), map[string]attr.Value{
 				"id":             types.StringValue(*f.Id),
+				"location":       types.StringValue(*f.Location),
 				"name":           types.StringValue(*f.Name),
 				"description":    types.StringValue(*f.Description),
 				"firewall_rules": fwRules,
