@@ -118,11 +118,11 @@ func GetPostgresFirewallRulesState(ctx context.Context, firewallRules *[]ubiclou
 
 	firewallRulesValue := datasource_postgres.FirewallRulesValue{}
 	var firewallRulesValues []datasource_postgres.FirewallRulesValue
-	if *firewallRules != nil && len(*firewallRules) > 0 {
+	if firewallRules != nil && len(*firewallRules) > 0 {
 		for _, r := range *firewallRules {
 			fr := datasource_postgres.NewFirewallRulesValueMust(firewallRulesValue.AttributeTypes(ctx), map[string]attr.Value{
-				"id":   types.StringValue(*r.Id),
-				"cidr": types.StringValue(*r.Cidr),
+				"id":   types.StringPointerValue(r.Id),
+				"cidr": types.StringPointerValue(r.Cidr),
 			})
 			firewallRulesValues = append(firewallRulesValues, fr)
 		}
