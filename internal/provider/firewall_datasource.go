@@ -102,7 +102,7 @@ func GetFirewallsState(ctx context.Context, firewalls *[]ubicloud_client.Firewal
 	firewallsValue := datasource_vm.FirewallsValue{}
 	var firewallsValues []datasource_vm.FirewallsValue
 	firewallRulesValue := datasource_vm.FirewallRulesValue{}
-	if *firewalls != nil && len(*firewalls) > 0 {
+	if firewalls != nil && len(*firewalls) > 0 {
 		for _, f := range *firewalls {
 
 			fwRules, fwRulesDiag := GetFirewallRulesState(ctx, f.FirewallRules)
@@ -112,10 +112,10 @@ func GetFirewallsState(ctx context.Context, firewalls *[]ubicloud_client.Firewal
 			}
 
 			fw := datasource_vm.NewFirewallsValueMust(firewallsValue.AttributeTypes(ctx), map[string]attr.Value{
-				"id":             types.StringValue(*f.Id),
-				"location":       types.StringValue(*f.Location),
-				"name":           types.StringValue(*f.Name),
-				"description":    types.StringValue(*f.Description),
+				"id":             types.StringPointerValue(f.Id),
+				"location":       types.StringPointerValue(f.Location),
+				"name":           types.StringPointerValue(f.Name),
+				"description":    types.StringPointerValue(f.Description),
 				"firewall_rules": fwRules,
 			})
 			firewallsValues = append(firewallsValues, fw)

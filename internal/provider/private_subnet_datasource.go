@@ -115,14 +115,14 @@ func GetNicsState(ctx context.Context, nics *[]ubicloud_client.Nic) (basetypes.L
 	var diags diag.Diagnostics
 	nicsValue := datasource_private_subnet.NicsValue{}
 	var nicsValues []datasource_private_subnet.NicsValue
-	if *nics != nil && len(*nics) > 0 {
+	if nics != nil && len(*nics) > 0 {
 		for _, n := range *nics {
 			nv := datasource_private_subnet.NewNicsValueMust(nicsValue.AttributeTypes(ctx), map[string]attr.Value{
-				"id":           types.StringValue(*n.Id),
-				"name":         types.StringValue(*n.Name),
-				"private_ipv4": types.StringValue(*n.PrivateIpv4),
-				"private_ipv6": types.StringValue(*n.PrivateIpv6),
-				"vm_name":      types.StringValue(*n.VmName),
+				"id":           types.StringPointerValue(n.Id),
+				"name":         types.StringPointerValue(n.Name),
+				"private_ipv4": types.StringPointerValue(n.PrivateIpv4),
+				"private_ipv6": types.StringPointerValue(n.PrivateIpv6),
+				"vm_name":      types.StringPointerValue(n.VmName),
 			})
 			nicsValues = append(nicsValues, nv)
 		}
