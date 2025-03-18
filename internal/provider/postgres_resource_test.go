@@ -22,6 +22,7 @@ func TestAccPostgresResource(t *testing.T) {
           location    = "%s"
           name        = "%s"
           size        = "standard-2"
+		  version     = "17"
         }`, GetTestAccProjectId(), GetTestAccLocation(), resName),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ubicloud_postgres.testacc", "id"),
@@ -30,6 +31,7 @@ func TestAccPostgresResource(t *testing.T) {
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "name", resName),
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "vm_size", "standard-2"),
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "ha_type", "none"),
+					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "version", "17"),
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "primary", "true"),
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "firewall_rules.#", "1"),
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "firewall_rules.0.cidr", "0.0.0.0/0"),

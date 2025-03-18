@@ -48,6 +48,7 @@ resource "ubicloud_postgres" "example" {
 
 - `ha_type` (String) High availability type
 - `storage_size` (Number) Requested storage size in GiB
+- `version` (String) Requested Postgres version
 
 ### Read-Only
 

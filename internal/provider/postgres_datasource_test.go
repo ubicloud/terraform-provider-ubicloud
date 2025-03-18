@@ -21,6 +21,7 @@ func TestAccPostgresDataSource(t *testing.T) {
           location    = "%s"
           name        = "%s"
           size        = "standard-2"
+		  version     = "17"
         }
         
         data "ubicloud_postgres" "testacc" {
@@ -35,6 +36,7 @@ func TestAccPostgresDataSource(t *testing.T) {
 					resource.TestCheckResourceAttr("data.ubicloud_postgres.testacc", "name", resName),
 					resource.TestCheckResourceAttr("data.ubicloud_postgres.testacc", "vm_size", "standard-2"),
 					resource.TestCheckResourceAttr("data.ubicloud_postgres.testacc", "ha_type", "none"),
+					resource.TestCheckResourceAttr("data.ubicloud_postgres.testacc", "version", "17"),
 					resource.TestCheckResourceAttr("data.ubicloud_postgres.testacc", "primary", "true"),
 					resource.TestCheckResourceAttr("data.ubicloud_postgres.testacc", "firewall_rules.#", "1"),
 					resource.TestCheckResourceAttr("data.ubicloud_postgres.testacc", "firewall_rules.0.cidr", "0.0.0.0/0"),
