@@ -4,7 +4,7 @@ page_title: "Provider: Ubicloud"
 
 # Ubicloud Provider
 
-The "ubicloud" provider facilitates interaction with resources supported by [Ubicloud](https://www.ubicloud.com/). Before using this provider, you must configure it with your credentials, typically by setting the environment variable UBICLOUD_API_TOKEN. For instructions on obtaining an API token, refer to Ubicloud's [API documentation](https://www.ubicloud.com/docs/api/overview#Authentication).
+The "ubicloud" provider facilitates interaction with resources supported by [Ubicloud](https://www.ubicloud.com/). Before using this provider, you must configure it with your credentials, typically by setting the environment variable UBICLOUD_API_TOKEN. For instructions on obtaining an API token, refer to Ubicloud's [API documentation](https://www.ubicloud.com/docs/api-reference/overview).
 
 For detailed information on the available resources, please refer to the links in the navigation bar.
 
