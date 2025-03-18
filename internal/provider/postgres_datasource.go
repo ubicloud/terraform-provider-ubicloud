@@ -100,6 +100,7 @@ func setPostgresStateDatasource(ctx context.Context, postgresd *ubicloud_client.
 	assignInt(postgresd.StorageSizeGib, &state.StorageSizeGib)
 	assignBool(postgresd.Primary, &state.Primary)
 	assignStr(postgresd.HaType, &state.HaType)
+	assignStr(postgresd.Version, &state.Version)
 	assignStr(postgresd.ConnectionString, &state.ConnectionString)
 	assignStr(postgresd.EarliestRestoreTime, &state.EarliestRestoreTime)
 	assignStr(postgresd.LatestRestoreTime, &state.LatestRestoreTime)

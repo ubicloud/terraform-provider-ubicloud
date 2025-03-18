@@ -56,6 +56,7 @@ output "example_postgres" {
 - `primary` (Boolean) Is the database primary
 - `state` (String) State of the Postgres database
 - `storage_size_gib` (Number) Storage size in GiB
+- `version` (String) Requested Postgres version
 - `vm_size` (String) Size of the underlying VM
 
 <a id="nestedatt--firewall_rules"></a>

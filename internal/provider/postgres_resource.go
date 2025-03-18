@@ -69,6 +69,9 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 	if state.HaType.ValueString() != "" {
 		body.HaType = state.HaType.ValueStringPointer()
 	}
+	if state.Version.ValueString() != "" {
+		body.Version = state.Version.ValueStringPointer()
+	}
 	if state.StorageSize.ValueInt64() != 0 {
 		storageSize := int(state.StorageSize.ValueInt64())
 		body.StorageSize = &storageSize
@@ -197,6 +200,7 @@ func setPostgresStateResource(ctx context.Context, postgresd *ubicloud_client.Po
 	assignInt(postgresd.StorageSizeGib, &state.StorageSizeGib)
 	assignBool(postgresd.Primary, &state.Primary)
 	assignStr(postgresd.HaType, &state.HaType)
+	assignStr(postgresd.Version, &state.Version)
 
 	firewallRulesListValue, diags := GetPostgresFirewallRulesState(ctx, postgresd.FirewallRules)
 	if diags.HasError() {

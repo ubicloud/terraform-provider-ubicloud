@@ -533,6 +533,9 @@ paths:
                 storage_size:
                   type: integer
                   description: Requested storage size in GiB
+                version:
+                  type: string
+                  description: Requested Postgres version
               required:
                 - size
       responses:
@@ -1069,6 +1072,9 @@ components:
         ha_type:
           type: string
           description: High availability type
+        version:
+          type: string
+          description: Requested Postgres version
     PostgresDetailed:
       type: object
       properties:
@@ -1093,6 +1099,9 @@ components:
         ha_type:
           type: string
           description: High availability type
+        version:
+          type: string
+          description: Requested Postgres version
         connection_string:
           type: string
           description: Connection string to the Postgres database
