@@ -145,6 +145,7 @@ func (p *ubicloudProvider) Resources(ctx context.Context) []func() resource.Reso
 		NewPrivateSubnetResource,
 		NewProjectResource,
 		NewVmResource,
+		NewLoadBalancerResource,
 	}
 }
 
@@ -156,6 +157,7 @@ func (p *ubicloudProvider) DataSources(ctx context.Context) []func() datasource.
 		NewPrivateSubnetDataSource,
 		NewProjectDataSource,
 		NewVmDataSource,
+		NewLoadBalancerDataSource,
 	}
 }
 
