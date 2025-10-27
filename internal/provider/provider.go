@@ -6,7 +6,7 @@ import (
 
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/ubicloud_client"
 
-	"github.com/deepmap/oapi-codegen/v2/pkg/securityprovider"
+	"github.com/oapi-codegen/oapi-codegen/v2/pkg/securityprovider"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/path"
