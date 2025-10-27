@@ -28,7 +28,7 @@ The provided [GNUmakefile](./GNUmakefile) defines additional commands generally 
 
 #### Code generation
 
-This project uses [oapi-codegen](https://github.com/deepmap/oapi-codegen/) to generate a Go client to interact with Ubicloud based on an [OpenAPI specification of the Ubicloud API](./config/ubicloud_openapi.yml).
+This project uses [oapi-codegen](https://github.com/oapi-codegen/oapi-codegen/) to generate a Go client to interact with Ubicloud based on an [OpenAPI specification of the Ubicloud API](./config/ubicloud_openapi.yml).
 
 It also uses [OpenAPI Provider Spec Generator](https://github.com/hashicorp/terraform-plugin-codegen-openapi) together with [Terraform Plugin Framework Code Generator](github.com/hashicorp/terraform-plugin-codegen-framework) to generate parts of the Ubicloud provider itself, based on the same [OpenAPI spec](./config/ubicloud_openapi.yml).
 
