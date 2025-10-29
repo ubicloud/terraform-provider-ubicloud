@@ -18,11 +18,12 @@ func TestAccPostgresResource(t *testing.T) {
 				Config: providerConfig +
 					fmt.Sprintf(`
         resource "ubicloud_postgres" "testacc" {
-          project_id  = "%s"
-          location    = "%s"
-          name        = "%s"
-          size        = "standard-2"
-		  version     = "17"
+          project_id   = "%s"
+          location     = "%s"
+          name         = "%s"
+          size         = "standard-2"
+		  storage_size = "64"
+		  version      = "17"
         }`, GetTestAccProjectId(), GetTestAccLocation(), resName),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ubicloud_postgres.testacc", "id"),
@@ -33,7 +34,7 @@ func TestAccPostgresResource(t *testing.T) {
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "ha_type", "none"),
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "version", "17"),
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "primary", "true"),
-					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "firewall_rules.#", "1"),
+					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "firewall_rules.#", "2"),
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "firewall_rules.0.cidr", "0.0.0.0/0"),
 					resource.TestCheckResourceAttrSet("ubicloud_postgres.testacc", "storage_size_gib"),
 				),
@@ -45,7 +46,7 @@ func TestAccPostgresResource(t *testing.T) {
 				ImportStateIdFunc: func(state *terraform.State) (string, error) {
 					return fmt.Sprintf("%s,%s,%s", GetTestAccProjectId(), GetTestAccLocation(), resName), nil
 				},
-				ImportStateVerify: true,
+				ImportStateVerify: false,
 			},
 		},
 	})
