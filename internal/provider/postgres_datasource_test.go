@@ -17,11 +17,12 @@ func TestAccPostgresDataSource(t *testing.T) {
 				Config: providerConfig +
 					fmt.Sprintf(`
         resource "ubicloud_postgres" "testacc" {
-          project_id  = "%s"
-          location    = "%s"
-          name        = "%s"
-          size        = "standard-2"
-		  version     = "17"
+          project_id   = "%s"
+          location     = "%s"
+          name         = "%s"
+          size         = "standard-2"
+		  storage_size = "64"
+		  version      = "17"
         }
         
         data "ubicloud_postgres" "testacc" {
@@ -38,7 +39,7 @@ func TestAccPostgresDataSource(t *testing.T) {
 					resource.TestCheckResourceAttr("data.ubicloud_postgres.testacc", "ha_type", "none"),
 					resource.TestCheckResourceAttr("data.ubicloud_postgres.testacc", "version", "17"),
 					resource.TestCheckResourceAttr("data.ubicloud_postgres.testacc", "primary", "true"),
-					resource.TestCheckResourceAttr("data.ubicloud_postgres.testacc", "firewall_rules.#", "1"),
+					resource.TestCheckResourceAttr("data.ubicloud_postgres.testacc", "firewall_rules.#", "2"),
 					resource.TestCheckResourceAttr("data.ubicloud_postgres.testacc", "firewall_rules.0.cidr", "0.0.0.0/0"),
 					resource.TestCheckResourceAttrSet("data.ubicloud_postgres.testacc", "state"),
 					resource.TestCheckResourceAttrSet("data.ubicloud_postgres.testacc", "storage_size_gib"),

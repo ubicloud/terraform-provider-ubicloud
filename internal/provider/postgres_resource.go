@@ -63,18 +63,16 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
+	storageSize := int(state.StorageSize.ValueInt64())
 	body := ubicloud_client.CreatePostgresDatabaseJSONRequestBody{
 		Size: state.Size.ValueString(),
+		StorageSize: &storageSize,
 	}
 	if state.HaType.ValueString() != "" {
 		body.HaType = state.HaType.ValueStringPointer()
 	}
 	if state.Version.ValueString() != "" {
 		body.Version = state.Version.ValueStringPointer()
-	}
-	if state.StorageSize.ValueInt64() != 0 {
-		storageSize := int(state.StorageSize.ValueInt64())
-		body.StorageSize = &storageSize
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Creating postgres database: %s", postgresResourceLogIdentifier(&state)))
