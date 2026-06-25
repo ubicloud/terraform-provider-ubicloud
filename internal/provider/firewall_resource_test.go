@@ -9,6 +9,7 @@ import (
 )
 
 func TestAccFirewallResource(t *testing.T) {
+	resName := GetRandomResourceName("fw")
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
@@ -19,24 +20,24 @@ func TestAccFirewallResource(t *testing.T) {
         resource "ubicloud_firewall" "testacc" {
           project_id  = "%s"
           location    = "%s"
-          name        = "tf-testacc"
+          name        = "%s"
           description = "Terraform acceptance testing"
-        }`, GetTestAccProjectId(), GetTestAccLocation()),
+        }`, GetTestAccProjectId(), GetTestAccLocation(), resName),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ubicloud_firewall.testacc", "id"),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "project_id", GetTestAccProjectId()),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "location", GetTestAccLocation()),
-					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "name", "tf-testacc"),
+					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "name", resName),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "description", "Terraform acceptance testing"),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "firewall_rules.#", "0"),
 				),
 			},
 			// Test ImportState
 			{
-				ResourceName:        "ubicloud_firewall.testacc",
-				ImportState:         true,
+				ResourceName: "ubicloud_firewall.testacc",
+				ImportState:  true,
 				ImportStateIdFunc: func(state *terraform.State) (string, error) {
-					return fmt.Sprintf("%s,%s,%s", GetTestAccProjectId(), GetTestAccLocation(), "tf-testacc"), nil
+					return fmt.Sprintf("%s,%s,%s", GetTestAccProjectId(), GetTestAccLocation(), resName), nil
 				},
 			},
 		},

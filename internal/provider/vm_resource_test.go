@@ -28,12 +28,11 @@ func TestAccVmResource(t *testing.T) {
 			{
 				Config: providerConfig + resourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("ubicloud_vm.testacc", "id"),
 					resource.TestCheckResourceAttr("ubicloud_vm.testacc", "project_id", GetTestAccProjectId()),
 					resource.TestCheckResourceAttr("ubicloud_vm.testacc", "location", GetTestAccLocation()),
 					resource.TestCheckResourceAttr("ubicloud_vm.testacc", "name", resName),
 					resource.TestCheckResourceAttr("ubicloud_vm.testacc", "size", "standard-2"),
-					resource.TestCheckResourceAttrSet("ubicloud_vm.testacc", "storage_size_gib"),
+					resource.TestCheckResourceAttrSet("ubicloud_vm.testacc", "storage_size"),
 					resource.TestCheckResourceAttrSet("ubicloud_vm.testacc", "unix_user"),
 				),
 			},

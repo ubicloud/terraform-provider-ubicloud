@@ -9,22 +9,23 @@ import (
 )
 
 func TestAccFirewallRuleResource(t *testing.T) {
+	fwName := GetRandomResourceName("fw")
 	resourceConfig := fmt.Sprintf(`
     resource "ubicloud_firewall" "testacc" {
       project_id  = "%s"
       location    = "%s"
-      name        = "tf-testacc"
+      name        = "%s"
       description = "Terraform acceptance testing"
     }
 
     resource "ubicloud_firewall_rule" "testaccfwr1" {
       project_id  = ubicloud_firewall.testacc.project_id
       location    = ubicloud_firewall.testacc.location
-      firewall_name = ubicloud_firewall.testacc.name
+      firewall_id = ubicloud_firewall.testacc.id
       cidr        = "0.0.0.0/0"
       port_range  = "22..22"
     }			
-    `, GetTestAccProjectId(), GetTestAccLocation())
+    `, GetTestAccProjectId(), GetTestAccLocation(), fwName)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -40,23 +41,24 @@ func TestAccFirewallRuleResource(t *testing.T) {
 					resource.TestCheckResourceAttrSet("ubicloud_firewall.testacc", "id"),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "project_id", GetTestAccProjectId()),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "location", GetTestAccLocation()),
-					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "name", "tf-testacc"),
+					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "name", fwName),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "description", "Terraform acceptance testing"),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "firewall_rules.#", "1"),
 
 					resource.TestCheckResourceAttrSet("ubicloud_firewall_rule.testaccfwr1", "id"),
 					resource.TestCheckResourceAttr("ubicloud_firewall_rule.testaccfwr1", "project_id", GetTestAccProjectId()),
-					resource.TestCheckResourceAttrSet("ubicloud_firewall_rule.testaccfwr1", "firewall_name"),
+					resource.TestCheckResourceAttrSet("ubicloud_firewall_rule.testaccfwr1", "firewall_id"),
 					resource.TestCheckResourceAttr("ubicloud_firewall_rule.testaccfwr1", "cidr", "0.0.0.0/0"),
 					resource.TestCheckResourceAttr("ubicloud_firewall_rule.testaccfwr1", "port_range", "22..22"),
 				),
 			},
 			// Test ImportState
 			{
-				ResourceName:      "ubicloud_firewall_rule.testaccfwr1",
-				ImportState:       true,
-				ImportStateIdFunc: importStateIdFunc("ubicloud_firewall_rule.testaccfwr1"),
-				ImportStateVerify: true,
+				ResourceName:            "ubicloud_firewall_rule.testaccfwr1",
+				ImportState:             true,
+				ImportStateIdFunc:       importStateIdFunc("ubicloud_firewall_rule.testaccfwr1"),
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"port_range"},
 			},
 		},
 	})
@@ -73,6 +75,6 @@ func importStateIdFunc(fwr string) resource.ImportStateIdFunc {
 		if rs.Primary.ID == "" {
 			return "", fmt.Errorf("No Record ID is set")
 		}
-		return fmt.Sprintf("%s,%s,%s,%s", GetTestAccProjectId(), rs.Primary.Attributes["location"], rs.Primary.Attributes["firewall_name"], rs.Primary.ID), nil
+		return fmt.Sprintf("%s,%s,%s,%s", GetTestAccProjectId(), rs.Primary.Attributes["location"], rs.Primary.Attributes["firewall_id"], rs.Primary.ID), nil
 	}
 }

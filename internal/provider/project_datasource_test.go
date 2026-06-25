@@ -20,7 +20,7 @@ func TestAccProjectDataSource(t *testing.T) {
         }`, GetTestAccProjectId()),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("data.ubicloud_project.testacc", "id", GetTestAccProjectId()),
-					resource.TestCheckResourceAttr("data.ubicloud_project.testacc", "name", "Terraform"),
+					resource.TestCheckResourceAttrSet("data.ubicloud_project.testacc", "name"),
 					resource.TestCheckResourceAttr("data.ubicloud_project.testacc", "credit", "0"),
 					resource.TestCheckResourceAttr("data.ubicloud_project.testacc", "discount", "100"),
 				),

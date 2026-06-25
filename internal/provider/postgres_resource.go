@@ -9,6 +9,7 @@ import (
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/resource_postgres"
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/ubicloud_client"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -190,7 +191,8 @@ func (r *postgresResource) ImportState(ctx context.Context, req resource.ImportS
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), idParts[2])...)
 }
 
-func setPostgresStateResource(_ context.Context, postgresd *ubicloud_client.PostgresDatabase, state *resource_postgres.PostgresModel) diag.Diagnostics {
+func setPostgresStateResource(ctx context.Context, postgresd *ubicloud_client.PostgresDatabase, state *resource_postgres.PostgresModel) diag.Diagnostics {
+	var diags diag.Diagnostics
 	state.Flavor = types.StringValue(postgresd.Flavor)
 	state.HaType = types.StringValue(postgresd.HaType)
 	state.Location = types.StringValue(postgresd.Location)
@@ -198,7 +200,39 @@ func setPostgresStateResource(_ context.Context, postgresd *ubicloud_client.Post
 	state.Size = types.StringValue(postgresd.VmSize)
 	state.StorageSize = types.Int64Value(int64(postgresd.StorageSizeGib))
 	state.Version = types.StringValue(string(postgresd.Version))
-	return nil
+	// These fields are not returned by the API; preserve known state or default to empty.
+	if state.PgConfig.IsNull() || state.PgConfig.IsUnknown() {
+		state.PgConfig = types.MapValueMust(types.StringType, map[string]attr.Value{})
+	}
+	if state.PgbouncerConfig.IsNull() || state.PgbouncerConfig.IsUnknown() {
+		state.PgbouncerConfig = types.MapValueMust(types.StringType, map[string]attr.Value{})
+	}
+	if state.PrivateSubnetName.IsNull() || state.PrivateSubnetName.IsUnknown() {
+		state.PrivateSubnetName = types.StringValue("")
+	}
+	if state.RestrictByDefault.IsNull() || state.RestrictByDefault.IsUnknown() {
+		state.RestrictByDefault = types.BoolValue(false)
+	}
+	tagsValue := resource_postgres.TagsValue{}
+	var tagsValues []resource_postgres.TagsValue
+	for _, t := range postgresd.Tags {
+		tv := resource_postgres.NewTagsValueMust(tagsValue.AttributeTypes(ctx), map[string]attr.Value{
+			"key":   types.StringValue(t.Key),
+			"value": types.StringValue(t.Value),
+		})
+		tagsValues = append(tagsValues, tv)
+	}
+	if tagsValues == nil {
+		tagsValues = []resource_postgres.TagsValue{}
+	}
+	tagsList, tagsDiag := types.ListValueFrom(ctx, tagsValue.Type(ctx), tagsValues)
+	diags.Append(tagsDiag...)
+	if !diags.HasError() {
+		state.Tags = tagsList
+	} else if state.Tags.IsNull() || state.Tags.IsUnknown() {
+		state.Tags, _ = types.ListValue(tagsValue.Type(ctx), []attr.Value{})
+	}
+	return diags
 }
 
 func postgresResourceLogIdentifier(state *resource_postgres.PostgresModel) string {

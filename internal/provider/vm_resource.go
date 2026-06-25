@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -55,7 +56,25 @@ func (r *vmResource) Metadata(ctx context.Context, req resource.MetadataRequest,
 func (r *vmResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = resource_vm.VmResourceSchema(ctx)
 	resp.Schema.Description = "Provides a Ubicloud VM resource. This can be used to create and delete VMs."
-
+	// The API fills in defaults for these when not specified, so they must be Computed.
+	resp.Schema.Attributes["boot_image"] = schema.StringAttribute{
+		Optional:            true,
+		Computed:            true,
+		Description:         "Boot image of the VM",
+		MarkdownDescription: "Boot image of the VM",
+	}
+	resp.Schema.Attributes["enable_ip4"] = schema.BoolAttribute{
+		Optional:            true,
+		Computed:            true,
+		Description:         "Enable IPv4",
+		MarkdownDescription: "Enable IPv4",
+	}
+	resp.Schema.Attributes["storage_size"] = schema.Int64Attribute{
+		Optional:            true,
+		Computed:            true,
+		Description:         "Requested storage size in GiB",
+		MarkdownDescription: "Requested storage size in GiB",
+	}
 }
 
 func (r *vmResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
