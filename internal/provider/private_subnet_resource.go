@@ -9,6 +9,7 @@ import (
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/resource_private_subnet"
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/ubicloud_client"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -197,7 +198,7 @@ func setPrivateSubnetStateResource(ctx context.Context, ps *ubicloud_client.Priv
 	}
 	state.Nics = nicsListValue
 
-	firewallsListValue, diagsFw := GetFirewallsState(ctx, ps.Firewalls)
+	firewallsListValue, diagsFw := getFirewallsStateResource(ctx, ps.Firewalls)
 	diags.Append(diagsFw...)
 	if diags.HasError() {
 		return diags
@@ -205,6 +206,52 @@ func setPrivateSubnetStateResource(ctx context.Context, ps *ubicloud_client.Priv
 
 	state.Firewalls = firewallsListValue
 	return diags
+}
+
+func getFirewallsStateResource(ctx context.Context, firewalls []ubicloud_client.Firewall) (types.List, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	firewallsValue := resource_private_subnet.FirewallsValue{}
+	var firewallsValues []resource_private_subnet.FirewallsValue
+	firewallRulesValue := resource_private_subnet.FirewallRulesValue{}
+	if len(firewalls) > 0 {
+		for _, f := range firewalls {
+			var firewallRulesValues []resource_private_subnet.FirewallRulesValue
+			for _, r := range f.FirewallRules {
+				fr := resource_private_subnet.NewFirewallRulesValueMust(firewallRulesValue.AttributeTypes(ctx), map[string]attr.Value{
+					"id":          types.StringValue(r.Id),
+					"cidr":        types.StringValue(r.Cidr),
+					"port_range":  types.StringValue(r.PortRange),
+					"description": types.StringValue(r.Description),
+					"protocol":    types.StringValue(string(r.Protocol)),
+				})
+				firewallRulesValues = append(firewallRulesValues, fr)
+			}
+			if firewallRulesValues == nil {
+				firewallRulesValues = []resource_private_subnet.FirewallRulesValue{}
+			}
+			fwRules, diag := types.ListValueFrom(ctx, firewallRulesValue.Type(ctx), firewallRulesValues)
+			diags.Append(diag...)
+			if diags.HasError() {
+				return types.ListUnknown(firewallsValue.Type(ctx)), diags
+			}
+			fw := resource_private_subnet.NewFirewallsValueMust(firewallsValue.AttributeTypes(ctx), map[string]attr.Value{
+				"id":             types.StringValue(f.Id),
+				"location":       types.StringValue(f.Location),
+				"name":           types.StringValue(f.Name),
+				"description":    types.StringValue(f.Description),
+				"firewall_rules": fwRules,
+			})
+			firewallsValues = append(firewallsValues, fw)
+		}
+	} else {
+		firewallsValues = []resource_private_subnet.FirewallsValue{}
+	}
+	firewallsListValue, diag := types.ListValueFrom(ctx, firewallsValue.Type(ctx), firewallsValues)
+	diags.Append(diag...)
+	if diags.HasError() {
+		return types.ListUnknown(firewallsValue.Type(ctx)), diags
+	}
+	return firewallsListValue, diags
 }
 
 func privateSubnetResourceLogIdentifier(state *resource_private_subnet.PrivateSubnetModel) string {
