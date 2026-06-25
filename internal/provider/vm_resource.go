@@ -212,6 +212,11 @@ func setVmStateResource(_ context.Context, vmd *ubicloud_client.Vm, state *resou
 	state.Size = types.StringValue(vmd.Size)
 	state.StorageSize = types.Int64Value(int64(vmd.StorageSizeGib))
 	state.UnixUser = types.StringValue(vmd.UnixUser)
+	// init_script is not returned by the API; preserve any known value already
+	// in state (user-supplied on create) and default to empty when unknown.
+	if state.InitScript.IsNull() || state.InitScript.IsUnknown() {
+		state.InitScript = types.StringValue("")
+	}
 	return nil
 }
 
