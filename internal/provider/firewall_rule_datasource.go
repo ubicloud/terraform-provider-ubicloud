@@ -96,11 +96,9 @@ func GetFirewallRulesState(ctx context.Context, firewallRules []ubicloud_client.
 	if len(firewallRules) > 0 {
 		for _, r := range firewallRules {
 			fr := datasource_vm.NewFirewallRulesValueMust(firewallRulesValue.AttributeTypes(ctx), map[string]attr.Value{
-				"id":          types.StringValue(r.Id),
-				"cidr":        types.StringValue(r.Cidr),
-				"port_range":  types.StringValue(r.PortRange),
-				"description": types.StringValue(r.Description),
-				"protocol":    types.StringValue(string(r.Protocol)),
+				"id":        types.StringValue(r.Id),
+				"cidr":      types.StringValue(r.Cidr),
+				"port_range": types.StringValue(r.PortRange),
 			})
 			firewallRulesValues = append(firewallRulesValues, fr)
 		}

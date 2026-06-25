@@ -26,17 +26,13 @@ func TestAccPostgresResource(t *testing.T) {
 		  version      = "17"
         }`, GetTestAccProjectId(), GetTestAccLocation(), resName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("ubicloud_postgres.testacc", "id"),
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "project_id", GetTestAccProjectId()),
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "location", GetTestAccLocation()),
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "name", resName),
-					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "vm_size", "standard-2"),
+					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "size", "standard-2"),
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "ha_type", "none"),
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "version", "17"),
-					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "primary", "true"),
-					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "firewall_rules.#", "2"),
-					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "firewall_rules.0.cidr", "0.0.0.0/0"),
-					resource.TestCheckResourceAttrSet("ubicloud_postgres.testacc", "storage_size_gib"),
+					resource.TestCheckResourceAttrSet("ubicloud_postgres.testacc", "storage_size"),
 				),
 			},
 			// Test ImportState

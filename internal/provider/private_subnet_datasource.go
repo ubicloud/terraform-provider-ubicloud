@@ -101,7 +101,7 @@ func setPrivateSubnetStateDatasource(ctx context.Context, ps *ubicloud_client.Pr
 	}
 	state.Nics = nicsListValue
 
-	firewallsListValue, diagsFw := GetFirewallsState(ctx, ps.Firewalls)
+	firewallsListValue, diagsFw := getFirewallsStateDatasource(ctx, ps.Firewalls)
 	diags.Append(diagsFw...)
 	if diags.HasError() {
 		return diags
@@ -137,6 +137,52 @@ func GetNicsState(ctx context.Context, nics []ubicloud_client.Nic) (basetypes.Li
 	}
 
 	return nicsListValue, diags
+}
+
+func getFirewallsStateDatasource(ctx context.Context, firewalls []ubicloud_client.Firewall) (basetypes.ListValue, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	firewallsValue := datasource_private_subnet.FirewallsValue{}
+	var firewallsValues []datasource_private_subnet.FirewallsValue
+	firewallRulesValue := datasource_private_subnet.FirewallRulesValue{}
+	if len(firewalls) > 0 {
+		for _, f := range firewalls {
+			var firewallRulesValues []datasource_private_subnet.FirewallRulesValue
+			for _, r := range f.FirewallRules {
+				fr := datasource_private_subnet.NewFirewallRulesValueMust(firewallRulesValue.AttributeTypes(ctx), map[string]attr.Value{
+					"id":          types.StringValue(r.Id),
+					"cidr":        types.StringValue(r.Cidr),
+					"port_range":  types.StringValue(r.PortRange),
+					"description": types.StringValue(r.Description),
+					"protocol":    types.StringValue(string(r.Protocol)),
+				})
+				firewallRulesValues = append(firewallRulesValues, fr)
+			}
+			if firewallRulesValues == nil {
+				firewallRulesValues = []datasource_private_subnet.FirewallRulesValue{}
+			}
+			fwRules, diagFr := types.ListValueFrom(ctx, firewallRulesValue.Type(ctx), firewallRulesValues)
+			diags.Append(diagFr...)
+			if diags.HasError() {
+				return basetypes.NewListUnknown(firewallsValue.Type(ctx)), diags
+			}
+			fw := datasource_private_subnet.NewFirewallsValueMust(firewallsValue.AttributeTypes(ctx), map[string]attr.Value{
+				"id":             types.StringValue(f.Id),
+				"location":       types.StringValue(f.Location),
+				"name":           types.StringValue(f.Name),
+				"description":    types.StringValue(f.Description),
+				"firewall_rules": fwRules,
+			})
+			firewallsValues = append(firewallsValues, fw)
+		}
+	} else {
+		firewallsValues = []datasource_private_subnet.FirewallsValue{}
+	}
+	firewallsListValue, diagFw := types.ListValueFrom(ctx, firewallsValue.Type(ctx), firewallsValues)
+	diags.Append(diagFw...)
+	if diags.HasError() {
+		return basetypes.NewListUnknown(firewallsValue.Type(ctx)), diags
+	}
+	return firewallsListValue, diags
 }
 
 func privateSubnetDataSourceLogIdentifier(state *datasource_private_subnet.PrivateSubnetModel) string {
