@@ -98,7 +98,7 @@ func (r *firewallRuleResource) Create(ctx context.Context, req resource.CreateRe
 
 	state.Id = types.StringValue(rule.Id)
 	state.Cidr = types.StringValue(rule.Cidr)
-	state.PortRange = types.StringValue(rule.PortRange)
+	state.PortRange = normalizedPortRange(state.PortRange.ValueString(), rule.PortRange)
 	state.Description = types.StringValue(rule.Description)
 	state.Protocol = types.StringValue(string(rule.Protocol))
 	state.FirewallReference = state.FirewallId
@@ -133,7 +133,7 @@ func (r *firewallRuleResource) Read(ctx context.Context, req resource.ReadReques
 
 	state.Id = types.StringValue(firewallRuleResp.JSON200.Id)
 	state.Cidr = types.StringValue(firewallRuleResp.JSON200.Cidr)
-	state.PortRange = types.StringValue(firewallRuleResp.JSON200.PortRange)
+	state.PortRange = normalizedPortRange(state.PortRange.ValueString(), firewallRuleResp.JSON200.PortRange)
 	state.Description = types.StringValue(firewallRuleResp.JSON200.Description)
 	state.Protocol = types.StringValue(string(firewallRuleResp.JSON200.Protocol))
 	state.FirewallReference = state.FirewallId
@@ -194,6 +194,25 @@ func (r *firewallRuleResource) ImportState(ctx context.Context, req resource.Imp
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("location"), idParts[1])...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("firewall_id"), idParts[2])...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[3])...)
+}
+
+// normalizedPortRange returns the prior value if it is a config-form alias for
+// the API's canonical value (e.g. "22..22" → "22"), so that state stays
+// consistent with what the user wrote and no spurious diff is produced.
+// In all other cases it returns the API's value.
+func normalizedPortRange(prior, apiValue string) types.String {
+	if prior != "" && normalizePortRange(prior) == apiValue {
+		return types.StringValue(prior)
+	}
+	return types.StringValue(apiValue)
+}
+
+func normalizePortRange(s string) string {
+	parts := strings.SplitN(s, "..", 2)
+	if len(parts) == 2 && parts[0] == parts[1] {
+		return parts[0]
+	}
+	return s
 }
 
 func firewallRuleResourceLogIdentifier(state *resource_firewall_rule.FirewallRuleModel) string {
