@@ -101,6 +101,7 @@ func (r *firewallRuleResource) Create(ctx context.Context, req resource.CreateRe
 	state.PortRange = types.StringValue(rule.PortRange)
 	state.Description = types.StringValue(rule.Description)
 	state.Protocol = types.StringValue(string(rule.Protocol))
+	state.FirewallReference = state.FirewallId
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -135,6 +136,7 @@ func (r *firewallRuleResource) Read(ctx context.Context, req resource.ReadReques
 	state.PortRange = types.StringValue(firewallRuleResp.JSON200.PortRange)
 	state.Description = types.StringValue(firewallRuleResp.JSON200.Description)
 	state.Protocol = types.StringValue(string(firewallRuleResp.JSON200.Protocol))
+	state.FirewallReference = state.FirewallId
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
