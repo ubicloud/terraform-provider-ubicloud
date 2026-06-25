@@ -91,9 +91,9 @@ func (d *privateSubnetDataSource) Read(ctx context.Context, req datasource.ReadR
 }
 
 func setPrivateSubnetStateDatasource(ctx context.Context, ps *ubicloud_client.PrivateSubnet, state *datasource_private_subnet.PrivateSubnetModel) diag.Diagnostics {
-	assignStr(ps.Id, &state.Id)
-	assignStr(ps.Net4, &state.Net4)
-	assignStr(ps.Net6, &state.Net6)
+	state.Id = types.StringValue(ps.Id)
+	state.Net4 = types.StringValue(ps.Net4)
+	state.Net6 = types.StringValue(ps.Net6)
 
 	nicsListValue, diags := GetNicsState(ctx, ps.Nics)
 	if diags.HasError() {
@@ -111,17 +111,17 @@ func setPrivateSubnetStateDatasource(ctx context.Context, ps *ubicloud_client.Pr
 	return diags
 }
 
-func GetNicsState(ctx context.Context, nics *[]ubicloud_client.Nic) (basetypes.ListValue, diag.Diagnostics) {
+func GetNicsState(ctx context.Context, nics []ubicloud_client.Nic) (basetypes.ListValue, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	nicsValue := datasource_private_subnet.NicsValue{}
 	var nicsValues []datasource_private_subnet.NicsValue
-	if nics != nil && len(*nics) > 0 {
-		for _, n := range *nics {
+	if len(nics) > 0 {
+		for _, n := range nics {
 			nv := datasource_private_subnet.NewNicsValueMust(nicsValue.AttributeTypes(ctx), map[string]attr.Value{
-				"id":           types.StringPointerValue(n.Id),
-				"name":         types.StringPointerValue(n.Name),
-				"private_ipv4": types.StringPointerValue(n.PrivateIpv4),
-				"private_ipv6": types.StringPointerValue(n.PrivateIpv6),
+				"id":           types.StringValue(n.Id),
+				"name":         types.StringValue(n.Name),
+				"private_ipv4": types.StringValue(n.PrivateIpv4),
+				"private_ipv6": types.StringValue(n.PrivateIpv6),
 				"vm_name":      types.StringPointerValue(n.VmName),
 			})
 			nicsValues = append(nicsValues, nv)

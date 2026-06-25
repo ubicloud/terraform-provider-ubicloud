@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -202,24 +203,16 @@ func (r *vmResource) ImportState(ctx context.Context, req resource.ImportStateRe
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), idParts[2])...)
 }
 
-func setVmStateResource(ctx context.Context, vmd *ubicloud_client.VmDetailed, state *resource_vm.VmModel) diag.Diagnostics {
-	assignStr(vmd.Id, &state.Id)
-	assignStr(vmd.Name, &state.Name)
-	assignStr(vmd.Location, &state.Location)
-	assignStr(vmd.Size, &state.Size)
-	assignStr(vmd.UnixUser, &state.UnixUser)
-	assignInt(vmd.StorageSizeGib, &state.StorageSizeGib)
-	assignStr(vmd.PrivateIpv4, &state.PrivateIpv4)
-	assignStr(vmd.PrivateIpv6, &state.PrivateIpv6)
-	assignStr(vmd.Subnet, &state.Subnet)
-
-	firewallsListValue, diags := GetFirewallsState(ctx, vmd.Firewalls)
-	if diags.HasError() {
-		return diags
-	}
-
-	state.Firewalls = firewallsListValue
-	return diags
+func setVmStateResource(_ context.Context, vmd *ubicloud_client.Vm, state *resource_vm.VmModel) diag.Diagnostics {
+	state.BootImage = types.StringValue(vmd.BootImage)
+	state.EnableIp4 = types.BoolValue(vmd.Ip4Enabled)
+	state.Gpu = types.StringPointerValue(vmd.Gpu)
+	state.Location = types.StringValue(vmd.Location)
+	state.Name = types.StringValue(vmd.Name)
+	state.Size = types.StringValue(vmd.Size)
+	state.StorageSize = types.Int64Value(int64(vmd.StorageSizeGib))
+	state.UnixUser = types.StringValue(vmd.UnixUser)
+	return nil
 }
 
 func vmResourceLogIdentifier(state *resource_vm.VmModel) string {

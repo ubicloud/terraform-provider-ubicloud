@@ -10,6 +10,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -81,10 +82,10 @@ func (r *projectResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	assignStr(projectResp.JSON200.Id, &state.Id)
-	assignStr(projectResp.JSON200.Name, &state.Name)
-	assignInt(projectResp.JSON200.Discount, &state.Discount)
-	assignFloat(projectResp.JSON200.Credit, &state.Credit)
+	state.Id = types.StringValue(projectResp.JSON200.Id)
+	state.Name = types.StringValue(projectResp.JSON200.Name)
+	state.Discount = types.Int64Value(int64(projectResp.JSON200.Discount))
+	state.Credit = types.Float64Value(float64(projectResp.JSON200.Credit))
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -114,10 +115,10 @@ func (r *projectResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	assignStr(projectResp.JSON200.Id, &state.Id)
-	assignStr(projectResp.JSON200.Name, &state.Name)
-	assignInt(projectResp.JSON200.Discount, &state.Discount)
-	assignFloat(projectResp.JSON200.Credit, &state.Credit)
+	state.Id = types.StringValue(projectResp.JSON200.Id)
+	state.Name = types.StringValue(projectResp.JSON200.Name)
+	state.Discount = types.Int64Value(int64(projectResp.JSON200.Discount))
+	state.Credit = types.Float64Value(float64(projectResp.JSON200.Credit))
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

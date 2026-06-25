@@ -52,6 +52,7 @@ resource "ubicloud_private_subnet" "example" {
 - `net4` (String) IPv4 CIDR of the subnet
 - `net6` (String) IPv6 CIDR of the subnet
 - `nics` (Attributes List) List of NICs (see [below for nested schema](#nestedatt--nics))
+- `state` (String) State of the subnet
 
 <a id="nestedatt--firewalls"></a>
 ### Nested Schema for `firewalls`
@@ -70,8 +71,10 @@ Read-Only:
 Read-Only:
 
 - `cidr` (String) CIDR of the firewall rule
+- `description` (String) Description of the firewall rule
 - `id` (String) ID of the firewall rule
 - `port_range` (String) Port range of the firewall rule
+- `protocol` (String) Protocol of the firewall rule (tcp or udp)
 
 
 

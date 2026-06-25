@@ -39,32 +39,30 @@ resource "ubicloud_postgres" "example" {
 
 ### Required
 
-- `location` (String) Location of the Postgres database
-- `name` (String) Name of the Postgres database
+- `location` (String) The Ubicloud location/region
+- `name` (String) Postgres database ID or name
 - `project_id` (String) ID of the project
 - `size` (String) Requested size for the underlying VM
 
 ### Optional
 
+- `flavor` (String) Kind of database
 - `ha_type` (String) High availability type
+- `pg_config` (Map of String)
+- `pgbouncer_config` (Map of String)
+- `private_subnet_name` (String) Name for the private subnet (if not provided, a name will be auto-generated)
+- `restrict_by_default` (Boolean) Whether to restrict access by default (if so, firewall rules must be added to access)
 - `storage_size` (Number) Requested storage size in GiB
-- `version` (String) Requested Postgres version
+- `tags` (Attributes List) Tags for the Postgres Database (see [below for nested schema](#nestedatt--tags))
+- `version` (String) PostgreSQL version
 
-### Read-Only
+<a id="nestedatt--tags"></a>
+### Nested Schema for `tags`
 
-- `firewall_rules` (Attributes List) List of Postgres firewall rules (see [below for nested schema](#nestedatt--firewall_rules))
-- `id` (String) ID of the Postgres database
-- `primary` (Boolean) Is the database primary
-- `storage_size_gib` (Number) Storage size in GiB
-- `vm_size` (String) Size of the underlying VM
+Required:
 
-<a id="nestedatt--firewall_rules"></a>
-### Nested Schema for `firewall_rules`
-
-Read-Only:
-
-- `cidr` (String) CIDR of the Postgres firewall rule
-- `id` (String) ID of the Postgres firewall rule
+- `key` (String) Key of the Postgres tag
+- `value` (String) Value of the Postgres tag
 
 ## Import
 

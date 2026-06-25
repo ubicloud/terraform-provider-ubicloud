@@ -10,3 +10,6 @@ install: build
 
 testacc:
 	TF_ACC=1 go test ./internal/provider/ -count=1 -v -cover -timeout 10m -skip TestAccProjectResource
+
+sync:
+	cp ../ubicloud/openapi/openapi.yml config/ubicloud_openapi.yml

@@ -76,48 +76,21 @@ output "example_vm" {
 
 ### Required
 
-- `location` (String) Location of the VM
-- `name` (String) Name of the VM
+- `location` (String) The Ubicloud location/region
+- `name` (String) Virtual machine ID or name
 - `project_id` (String) ID of the project
-- `public_key` (String) Public SSH key for the VM
+- `public_key` (String) Public SSH key for the VM, or name of registered SSH public key
 
 ### Optional
 
 - `boot_image` (String) Boot image of the VM
 - `enable_ip4` (Boolean) Enable IPv4
+- `gpu` (String) Requested GPU count and type, in the form of "count:type"
+- `init_script` (String) VM init script
 - `private_subnet_id` (String) ID of the private subnet
 - `size` (String) Size of the VM
 - `storage_size` (Number) Requested storage size in GiB
 - `unix_user` (String) Unix user of the VM
-
-### Read-Only
-
-- `firewalls` (Attributes List) List of firewalls (see [below for nested schema](#nestedatt--firewalls))
-- `id` (String) ID of the VM
-- `private_ipv4` (String) Private IPv4 address
-- `private_ipv6` (String) Private IPv6 address
-- `storage_size_gib` (Number) Storage size in GiB
-- `subnet` (String) Subnet of the VM
-
-<a id="nestedatt--firewalls"></a>
-### Nested Schema for `firewalls`
-
-Read-Only:
-
-- `description` (String) Description of the firewall
-- `firewall_rules` (Attributes List) List of firewall rules (see [below for nested schema](#nestedatt--firewalls--firewall_rules))
-- `id` (String) ID of the firewall
-- `location` (String) Location of the firewall
-- `name` (String) Name of the firewall
-
-<a id="nestedatt--firewalls--firewall_rules"></a>
-### Nested Schema for `firewalls.firewall_rules`
-
-Read-Only:
-
-- `cidr` (String) CIDR of the firewall rule
-- `id` (String) ID of the firewall rule
-- `port_range` (String) Port range of the firewall rule
 
 ## Import
 
