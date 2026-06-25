@@ -66,7 +66,7 @@ func (d *firewallRuleDataSource) Read(ctx context.Context, req datasource.ReadRe
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Reading firewall rule: %s", firewallRuleDataSourceLogIdentifier(&state)))
-	firewallRuleResp, err := d.uc.client.GetFirewallRuleDetailsWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString(), state.Id.ValueString())
+	firewallRuleResp, err := d.uc.client.GetLocationFirewallFirewallRuleDetailsWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallReference.ValueString(), state.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Error reading firewall rule: %s", firewallRuleDataSourceLogIdentifier(&state)),
@@ -82,24 +82,23 @@ func (d *firewallRuleDataSource) Read(ctx context.Context, req datasource.ReadRe
 		return
 	}
 
-	assignStr(firewallRuleResp.JSON200.Id, &state.Id)
-	assignStr(firewallRuleResp.JSON200.Cidr, &state.Cidr)
-	assignStr(firewallRuleResp.JSON200.PortRange, &state.PortRange)
+	state.Id = types.StringValue(firewallRuleResp.JSON200.Id)
+	state.Cidr = types.StringValue(firewallRuleResp.JSON200.Cidr)
+	state.PortRange = types.StringValue(firewallRuleResp.JSON200.PortRange)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func GetFirewallRulesState(ctx context.Context, firewallRules *[]ubicloud_client.FirewallRule) (basetypes.ListValue, diag.Diagnostics) {
+func GetFirewallRulesState(ctx context.Context, firewallRules []ubicloud_client.FirewallRule) (basetypes.ListValue, diag.Diagnostics) {
 	var diags diag.Diagnostics
-	// Firewalls
 	var firewallRulesValues []datasource_vm.FirewallRulesValue
 	firewallRulesValue := datasource_vm.FirewallRulesValue{}
-	if firewallRules != nil && len(*firewallRules) > 0 {
-		for _, r := range *firewallRules {
+	if len(firewallRules) > 0 {
+		for _, r := range firewallRules {
 			fr := datasource_vm.NewFirewallRulesValueMust(firewallRulesValue.AttributeTypes(ctx), map[string]attr.Value{
-				"id":         types.StringPointerValue(r.Id),
-				"cidr":       types.StringPointerValue(r.Cidr),
-				"port_range": types.StringPointerValue(r.PortRange),
+				"id":         types.StringValue(r.Id),
+				"cidr":       types.StringValue(r.Cidr),
+				"port_range": types.StringValue(r.PortRange),
 			})
 			firewallRulesValues = append(firewallRulesValues, fr)
 		}
@@ -117,5 +116,5 @@ func GetFirewallRulesState(ctx context.Context, firewallRules *[]ubicloud_client
 }
 
 func firewallRuleDataSourceLogIdentifier(state *datasource_firewall_rule.FirewallRuleModel) string {
-	return fmt.Sprintf("project_id=%s, location=%s, firewall_name=%s, rule_id=%s", state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString(), state.Id.ValueString())
+	return fmt.Sprintf("project_id=%s, location=%s, firewall_name=%s, rule_id=%s", state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallReference.ValueString(), state.Id.ValueString())
 }

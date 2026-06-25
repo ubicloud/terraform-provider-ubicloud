@@ -10,6 +10,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -87,19 +88,19 @@ func (d *vmDataSource) Read(ctx context.Context, req datasource.ReadRequest, res
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func setVmStateDatasource(ctx context.Context, vmd *ubicloud_client.VmDetailed, state *datasource_vm.VmModel) diag.Diagnostics {
-	assignStr(vmd.Id, &state.Id)
-	assignStr(vmd.Name, &state.Name)
-	assignStr(vmd.State, &state.State)
-	assignStr(vmd.Location, &state.Location)
-	assignStr(vmd.Size, &state.Size)
-	assignStr(vmd.UnixUser, &state.UnixUser)
-	assignInt(vmd.StorageSizeGib, &state.StorageSizeGib)
-	assignStr(vmd.Ip4, &state.Ip4)
-	assignStr(vmd.Ip6, &state.Ip6)
-	assignStr(vmd.PrivateIpv4, &state.PrivateIpv4)
-	assignStr(vmd.PrivateIpv6, &state.PrivateIpv6)
-	assignStr(vmd.Subnet, &state.Subnet)
+func setVmStateDatasource(ctx context.Context, vmd *ubicloud_client.Vm, state *datasource_vm.VmModel) diag.Diagnostics {
+	state.Id = types.StringValue(vmd.Id)
+	state.Name = types.StringValue(vmd.Name)
+	state.State = types.StringValue(vmd.State)
+	state.Location = types.StringValue(vmd.Location)
+	state.Size = types.StringValue(vmd.Size)
+	state.UnixUser = types.StringValue(vmd.UnixUser)
+	state.StorageSizeGib = types.Int64Value(int64(vmd.StorageSizeGib))
+	state.Ip4 = types.StringPointerValue(vmd.Ip4)
+	state.Ip6 = types.StringPointerValue(vmd.Ip6)
+	state.PrivateIpv4 = types.StringValue(vmd.PrivateIpv4)
+	state.PrivateIpv6 = types.StringValue(vmd.PrivateIpv6)
+	state.Subnet = types.StringValue(vmd.Subnet)
 
 	firewallsListValue, diags := GetFirewallsState(ctx, vmd.Firewalls)
 	if diags.HasError() {

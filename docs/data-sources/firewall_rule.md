@@ -29,7 +29,7 @@ output "test_firewall" {
 
 ### Required
 
-- `firewall_name` (String) Name of the firewall
+- `firewall_reference` (String) Firewall ID or name
 - `id` (String) ID of the firewall rule
 - `location` (String) The Ubicloud location/region
 - `project_id` (String) ID of the project
@@ -37,4 +37,6 @@ output "test_firewall" {
 ### Read-Only
 
 - `cidr` (String) CIDR of the firewall rule
+- `description` (String) Description of the firewall rule
 - `port_range` (String) Port range of the firewall rule
+- `protocol` (String) Protocol of the firewall rule (tcp or udp)

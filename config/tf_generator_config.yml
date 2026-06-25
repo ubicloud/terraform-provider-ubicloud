@@ -3,15 +3,15 @@ provider:
 data_sources:
   firewall:
     read:
-      path: /project/{project_id}/location/{location}/firewall/{firewall_name}
+      path: /project/{project_id}/location/{location}/firewall/{firewall_reference}
       method: GET
     schema:
       attributes:
         aliases:
-          firewall_name: name
+          firewall_reference: name
   firewall_rule:
     read:
-      path: /project/{project_id}/location/{location}/firewall/{firewall_name}/firewall-rule/{firewall_rule_id}
+      path: /project/{project_id}/location/{location}/firewall/{firewall_reference}/firewall-rule/{firewall_rule_id}
       method: GET
     schema:
       attributes:
@@ -19,12 +19,12 @@ data_sources:
           firewall_rule_id: id
   private_subnet:
     read:
-      path: /project/{project_id}/location/{location}/private-subnet/{private_subnet_name}
+      path: /project/{project_id}/location/{location}/private-subnet/{private_subnet_reference}
       method: GET
     schema:
       attributes:
         aliases:
-          private_subnet_name: name
+          private_subnet_reference: name
   project:
     read:
       path: /project/{project_id}
@@ -35,39 +35,39 @@ data_sources:
           project_id: id
   vm:
     read:
-      path: /project/{project_id}/location/{location}/vm/{vm_name}
+      path: /project/{project_id}/location/{location}/vm/{vm_reference}
       method: GET
     schema:
       attributes:
         aliases:
-          vm_name: name
+          vm_reference: name
   postgres:
     read:
-      path: /project/{project_id}/location/{location}/postgres/{postgres_database_name}
+      path: /project/{project_id}/location/{location}/postgres/{postgres_database_reference}
       method: GET
     schema:
       attributes:
         aliases:
-          postgres_database_name: name
+          postgres_database_reference: name
           vm_size: size
 resources:
   firewall:
     create:
-      path: /project/{project_id}/location/{location}/firewall/{firewall_name}
+      path: /project/{project_id}/location/{location}/firewall/{firewall_reference}
       method: POST
     read:
-      path: /project/{project_id}/location/{location}/firewall/{firewall_name}
+      path: /project/{project_id}/location/{location}/firewall/{firewall_reference}
       method: GET
     schema:
       attributes:
         aliases:
-          firewall_name: name
+          firewall_reference: name
   firewall_rule:
     create:
-      path: /project/{project_id}/location/{location}/firewall/{firewall_name}/firewall-rule
+      path: /project/{project_id}/location/{location}/firewall/{firewall_reference}/firewall-rule
       method: POST
     read:
-      path: /project/{project_id}/location/{location}/firewall/{firewall_name}/firewall-rule/{firewall_rule_id}
+      path: /project/{project_id}/location/{location}/firewall/{firewall_reference}/firewall-rule/{firewall_rule_id}
       method: GET
     schema:
       attributes:
@@ -75,15 +75,15 @@ resources:
           firewall_rule_id: id
   vm:
     create:
-      path: /project/{project_id}/location/{location}/vm/{vm_name}
+      path: /project/{project_id}/location/{location}/vm/{vm_reference}
       method: POST
     read:
-      path: /project/{project_id}/location/{location}/vm/{vm_name}
+      path: /project/{project_id}/location/{location}/vm/{vm_reference}
       method: GET
     schema:
       attributes:
         aliases:
-          vm_name: name
+          vm_reference: name
       ignores:
         - ip4
         - ip6
@@ -91,15 +91,15 @@ resources:
         - storage_size_gb
   postgres:
     create:
-      path: /project/{project_id}/location/{location}/postgres/{postgres_database_name}
+      path: /project/{project_id}/location/{location}/postgres/{postgres_database_reference}
       method: POST
     read:
-      path: /project/{project_id}/location/{location}/postgres/{postgres_database_name}
+      path: /project/{project_id}/location/{location}/postgres/{postgres_database_reference}
       method: GET
     schema:
       attributes:
         aliases:
-          postgres_database_name: name
+          postgres_database_reference: name
           vm_size: size
       ignores:
         - connection_string
@@ -108,15 +108,15 @@ resources:
         - state
   private_subnet:
     create:
-      path: /project/{project_id}/location/{location}/private-subnet/{private_subnet_name}
+      path: /project/{project_id}/location/{location}/private-subnet/{private_subnet_reference}
       method: POST
     read:
-      path: /project/{project_id}/location/{location}/private-subnet/{private_subnet_name}
+      path: /project/{project_id}/location/{location}/private-subnet/{private_subnet_reference}
       method: GET
     schema:
       attributes:
         aliases:
-          private_subnet_name: name
+          private_subnet_reference: name
   project:
     create:
       path: /project

@@ -65,8 +65,10 @@ resource "ubicloud_firewall_rule" "ssh" {
 Read-Only:
 
 - `cidr` (String) CIDR of the firewall rule
+- `description` (String) Description of the firewall rule
 - `id` (String) ID of the firewall rule
 - `port_range` (String) Port range of the firewall rule
+- `protocol` (String) Protocol of the firewall rule (tcp or udp)
 
 ## Import
 
