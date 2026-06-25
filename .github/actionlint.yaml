@@ -1,0 +1,5 @@
+# Register Ubicloud's self-hosted runner label so actionlint does not flag it as
+# an unknown runner in the acceptance-test and release workflows.
+self-hosted-runner:
+  labels:
+    - ubicloud
