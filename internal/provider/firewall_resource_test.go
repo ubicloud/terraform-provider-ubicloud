@@ -33,8 +33,8 @@ func TestAccFirewallResource(t *testing.T) {
 			},
 			// Test ImportState
 			{
-				ResourceName:        "ubicloud_firewall.testacc",
-				ImportState:         true,
+				ResourceName: "ubicloud_firewall.testacc",
+				ImportState:  true,
 				ImportStateIdFunc: func(state *terraform.State) (string, error) {
 					return fmt.Sprintf("%s,%s,%s", GetTestAccProjectId(), GetTestAccLocation(), "tf-testacc"), nil
 				},

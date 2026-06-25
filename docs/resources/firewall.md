@@ -46,7 +46,7 @@ resource "ubicloud_firewall_rule" "ssh" {
 
 ### Required
 
-- `location` (String) Location of the firewall
+- `location` (String) Location of the the firewall
 - `name` (String) Name of the firewall
 - `project_id` (String) ID of the project
 
@@ -58,6 +58,7 @@ resource "ubicloud_firewall_rule" "ssh" {
 
 - `firewall_rules` (Attributes List) List of firewall rules (see [below for nested schema](#nestedatt--firewall_rules))
 - `id` (String) ID of the firewall
+- `private_subnets` (List of String) List of private subnets
 
 <a id="nestedatt--firewall_rules"></a>
 ### Nested Schema for `firewall_rules`
@@ -65,12 +66,16 @@ resource "ubicloud_firewall_rule" "ssh" {
 Read-Only:
 
 - `cidr` (String) CIDR of the firewall rule
+- `description` (String) Description of the firewall rule
 - `id` (String) ID of the firewall rule
 - `port_range` (String) Port range of the firewall rule
+- `protocol` (String) Protocol of the firewall rule (tcp or udp)
 
 ## Import
 
 Import is supported using the following syntax:
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 terraform import ubicloud_firewall.example <project_id>,<location>,<firewall_name>

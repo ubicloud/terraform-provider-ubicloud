@@ -36,7 +36,7 @@ output "example_firewall" {
 ### Required
 
 - `location` (String) The Ubicloud location/region
-- `name` (String) Name of the firewall
+- `name` (String) Firewall ID or name
 - `project_id` (String) ID of the project
 
 ### Read-Only
@@ -44,6 +44,7 @@ output "example_firewall" {
 - `description` (String) Description of the firewall
 - `firewall_rules` (Attributes List) List of firewall rules (see [below for nested schema](#nestedatt--firewall_rules))
 - `id` (String) ID of the firewall
+- `private_subnets` (List of String) List of private subnets
 
 <a id="nestedatt--firewall_rules"></a>
 ### Nested Schema for `firewall_rules`
@@ -51,5 +52,7 @@ output "example_firewall" {
 Read-Only:
 
 - `cidr` (String) CIDR of the firewall rule
+- `description` (String) Description of the firewall rule
 - `id` (String) ID of the firewall rule
 - `port_range` (String) Port range of the firewall rule
+- `protocol` (String) Protocol of the firewall rule (tcp or udp)

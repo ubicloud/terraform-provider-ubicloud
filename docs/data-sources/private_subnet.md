@@ -41,7 +41,7 @@ output "example_private_subnet" {
 ### Required
 
 - `location` (String) The Ubicloud location/region
-- `name` (String) Private subnet name
+- `name` (String) Private subnet ID or name
 - `project_id` (String) ID of the project
 
 ### Read-Only
@@ -51,6 +51,7 @@ output "example_private_subnet" {
 - `net4` (String) IPv4 CIDR of the subnet
 - `net6` (String) IPv6 CIDR of the subnet
 - `nics` (Attributes List) List of NICs (see [below for nested schema](#nestedatt--nics))
+- `state` (String) State of the subnet
 
 <a id="nestedatt--firewalls"></a>
 ### Nested Schema for `firewalls`
@@ -60,7 +61,7 @@ Read-Only:
 - `description` (String) Description of the firewall
 - `firewall_rules` (Attributes List) List of firewall rules (see [below for nested schema](#nestedatt--firewalls--firewall_rules))
 - `id` (String) ID of the firewall
-- `location` (String) Location of the firewall
+- `location` (String) Location of the the firewall
 - `name` (String) Name of the firewall
 
 <a id="nestedatt--firewalls--firewall_rules"></a>
@@ -69,8 +70,10 @@ Read-Only:
 Read-Only:
 
 - `cidr` (String) CIDR of the firewall rule
+- `description` (String) Description of the firewall rule
 - `id` (String) ID of the firewall rule
 - `port_range` (String) Port range of the firewall rule
+- `protocol` (String) Protocol of the firewall rule (tcp or udp)
 
 
 

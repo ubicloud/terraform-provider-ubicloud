@@ -46,29 +46,61 @@ resource "ubicloud_postgres" "example" {
 
 ### Optional
 
+- `flavor` (String) Kind of database
 - `ha_type` (String) High availability type
+- `pg_config` (Map of String)
+- `pgbouncer_config` (Map of String)
+- `private_subnet_name` (String) Name for the private subnet (if not provided, a name will be auto-generated)
+- `restrict_by_default` (Boolean) Whether to restrict access by default (if so, firewall rules must be added to access)
 - `storage_size` (Number) Requested storage size in GiB
-- `version` (String) Requested Postgres version
+- `tags` (Attributes List) Tags for the Postgres Database (see [below for nested schema](#nestedatt--tags))
+- `version` (String) PostgreSQL version
 
 ### Read-Only
 
+- `ca_certificates` (String) CA certificates of the root CA used to issue postgres server certificates
+- `created_at` (String) Creation timestamp of the Postgres database
+- `fallback_active` (Boolean) Whether the primary server is running on a fallback instance type
 - `firewall_rules` (Attributes List) List of Postgres firewall rules (see [below for nested schema](#nestedatt--firewall_rules))
+- `hostname` (String) Hostname for the Postgres database
 - `id` (String) ID of the Postgres database
+- `maintenance_window_start_at` (Number) Maintenance window start time
+- `parent` (String) Parent Postgres database
+- `password` (String) Password for the Postgres database
 - `primary` (Boolean) Is the database primary
+- `read_replica` (Boolean) If the database is a read replica or not
 - `storage_size_gib` (Number) Storage size in GiB
+- `target_server_count` (Number) Target number of servers (primary + standbys)
+- `target_storage_size_gib` (Number) Desired storage size in GiB
+- `target_version` (String) Target Postgres version
+- `target_vm_size` (String) Desired VM size
+- `username` (String) Username for the Postgres database
 - `vm_size` (String) Size of the underlying VM
+
+<a id="nestedatt--tags"></a>
+### Nested Schema for `tags`
+
+Required:
+
+- `key` (String) Key of the Postgres tag
+- `value` (String) Value of the Postgres tag
+
 
 <a id="nestedatt--firewall_rules"></a>
 ### Nested Schema for `firewall_rules`
 
 Read-Only:
 
-- `cidr` (String) CIDR of the Postgres firewall rule
-- `id` (String) ID of the Postgres firewall rule
+- `cidr` (String) CIDR of the firewall rule
+- `description` (String) Port information for the firewall rule
+- `id` (String) ID of the firewall rule
+- `port` (Number) Port for the Postgres firewall rule
 
 ## Import
 
 Import is supported using the following syntax:
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 terraform import ubicloud_postgres.example <project_id>,<location>,<name>

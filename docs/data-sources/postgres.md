@@ -42,21 +42,36 @@ output "example_postgres" {
 ### Required
 
 - `location` (String) The Ubicloud location/region
-- `name` (String) Postgres database name
+- `name` (String) Postgres database ID or name
 - `project_id` (String) ID of the project
 
 ### Read-Only
 
+- `ca_certificates` (String) CA certificates of the root CA used to issue postgres server certificates
 - `connection_string` (String) Connection string to the Postgres database
+- `created_at` (String) Creation timestamp of the Postgres database
 - `earliest_restore_time` (String) Earliest restore time (if primary)
+- `fallback_active` (Boolean) Whether the primary server is running on a fallback instance type
 - `firewall_rules` (Attributes List) List of Postgres firewall rules (see [below for nested schema](#nestedatt--firewall_rules))
+- `flavor` (String) Kind of Postgres database
 - `ha_type` (String) High availability type
+- `hostname` (String) Hostname for the Postgres database
 - `id` (String) ID of the Postgres database
 - `latest_restore_time` (String) Latest restore time (if primary)"
+- `maintenance_window_start_at` (Number) Maintenance window start time
+- `parent` (String) Parent Postgres database
+- `password` (String) Password for the Postgres database
 - `primary` (Boolean) Is the database primary
+- `read_replica` (Boolean) If the database is a read replica or not
 - `state` (String) State of the Postgres database
 - `storage_size_gib` (Number) Storage size in GiB
-- `version` (String) Requested Postgres version
+- `tags` (Attributes List) Tags of the Postgres database (see [below for nested schema](#nestedatt--tags))
+- `target_server_count` (Number) Target number of servers (primary + standbys)
+- `target_storage_size_gib` (Number) Desired storage size in GiB
+- `target_version` (String) Target Postgres version
+- `target_vm_size` (String) Desired VM size
+- `username` (String) Username for the Postgres database
+- `version` (String) Current Postgres version
 - `vm_size` (String) Size of the underlying VM
 
 <a id="nestedatt--firewall_rules"></a>
@@ -64,5 +79,16 @@ output "example_postgres" {
 
 Read-Only:
 
-- `cidr` (String) CIDR of the Postgres firewall rule
-- `id` (String) ID of the Postgres firewall rule
+- `cidr` (String) CIDR of the firewall rule
+- `description` (String) Port information for the firewall rule
+- `id` (String) ID of the firewall rule
+- `port` (Number) Port for the Postgres firewall rule
+
+
+<a id="nestedatt--tags"></a>
+### Nested Schema for `tags`
+
+Read-Only:
+
+- `key` (String) Key of the Postgres tag
+- `value` (String) Value of the Postgres tag

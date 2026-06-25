@@ -42,14 +42,17 @@ output "example_vm" {
 ### Required
 
 - `location` (String) The Ubicloud location/region
-- `name` (String) Virtual machine name
+- `name` (String) Virtual machine ID or name
 - `project_id` (String) ID of the project
 
 ### Read-Only
 
+- `boot_image` (String) Boot image of the VM
 - `firewalls` (Attributes List) List of firewalls (see [below for nested schema](#nestedatt--firewalls))
+- `gpu` (String) GPU configuration
 - `id` (String) ID of the VM
 - `ip4` (String) IPv4 address
+- `ip4_enabled` (Boolean) Whether IPv4 is enabled
 - `ip6` (String) IPv6 address
 - `private_ipv4` (String) Private IPv4 address
 - `private_ipv6` (String) Private IPv6 address
@@ -67,7 +70,7 @@ Read-Only:
 - `description` (String) Description of the firewall
 - `firewall_rules` (Attributes List) List of firewall rules (see [below for nested schema](#nestedatt--firewalls--firewall_rules))
 - `id` (String) ID of the firewall
-- `location` (String) Location of the firewall
+- `location` (String) Location of the the firewall
 - `name` (String) Name of the firewall
 
 <a id="nestedatt--firewalls--firewall_rules"></a>
@@ -76,5 +79,7 @@ Read-Only:
 Read-Only:
 
 - `cidr` (String) CIDR of the firewall rule
+- `description` (String) Description of the firewall rule
 - `id` (String) ID of the firewall rule
 - `port_range` (String) Port range of the firewall rule
+- `protocol` (String) Protocol of the firewall rule (tcp or udp)

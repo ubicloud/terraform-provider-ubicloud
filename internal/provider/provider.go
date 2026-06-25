@@ -6,7 +6,6 @@ import (
 
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/ubicloud_client"
 
-	"github.com/oapi-codegen/oapi-codegen/v2/pkg/securityprovider"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -14,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/oapi-codegen/oapi-codegen/v2/pkg/securityprovider"
 )
 
 // Ensure UbicloudProvider satisfies various provider interfaces.
@@ -122,7 +122,12 @@ func (p *ubicloudProvider) Configure(ctx context.Context, req provider.Configure
 		return
 	}
 
-	client, err := ubicloud_client.NewClientWithResponses(endpoint, ubicloud_client.WithRequestEditorFn(auth.Intercept))
+	clientOpts := []ubicloud_client.ClientOption{ubicloud_client.WithRequestEditorFn(auth.Intercept)}
+	if hc := newTrafficLoggingHTTPClient(); hc != nil {
+		clientOpts = append(clientOpts, ubicloud_client.WithHTTPClient(hc))
+	}
+
+	client, err := ubicloud_client.NewClientWithResponses(endpoint, clientOpts...)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create Ubicloud client", err.Error())
 		return

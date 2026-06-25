@@ -79,12 +79,14 @@ output "example_vm" {
 - `location` (String) Location of the VM
 - `name` (String) Name of the VM
 - `project_id` (String) ID of the project
-- `public_key` (String) Public SSH key for the VM
+- `public_key` (String) Public SSH key for the VM, or name of registered SSH public key
 
 ### Optional
 
 - `boot_image` (String) Boot image of the VM
 - `enable_ip4` (Boolean) Enable IPv4
+- `gpu` (String) Requested GPU count and type, in the form of "count:type"
+- `init_script` (String) VM init script
 - `private_subnet_id` (String) ID of the private subnet
 - `size` (String) Size of the VM
 - `storage_size` (Number) Requested storage size in GiB
@@ -94,6 +96,7 @@ output "example_vm" {
 
 - `firewalls` (Attributes List) List of firewalls (see [below for nested schema](#nestedatt--firewalls))
 - `id` (String) ID of the VM
+- `ip4_enabled` (Boolean) Whether IPv4 is enabled
 - `private_ipv4` (String) Private IPv4 address
 - `private_ipv6` (String) Private IPv6 address
 - `storage_size_gib` (Number) Storage size in GiB
@@ -107,7 +110,7 @@ Read-Only:
 - `description` (String) Description of the firewall
 - `firewall_rules` (Attributes List) List of firewall rules (see [below for nested schema](#nestedatt--firewalls--firewall_rules))
 - `id` (String) ID of the firewall
-- `location` (String) Location of the firewall
+- `location` (String) Location of the the firewall
 - `name` (String) Name of the firewall
 
 <a id="nestedatt--firewalls--firewall_rules"></a>
@@ -116,12 +119,16 @@ Read-Only:
 Read-Only:
 
 - `cidr` (String) CIDR of the firewall rule
+- `description` (String) Description of the firewall rule
 - `id` (String) ID of the firewall rule
 - `port_range` (String) Port range of the firewall rule
+- `protocol` (String) Protocol of the firewall rule (tcp or udp)
 
 ## Import
 
 Import is supported using the following syntax:
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 terraform import ubicloud_vm.example <project_id>,<location>,<name>

@@ -90,20 +90,19 @@ func (d *postgresDataSource) Read(ctx context.Context, req datasource.ReadReques
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func setPostgresStateDatasource(ctx context.Context, postgresd *ubicloud_client.PostgresDetailed, state *datasource_postgres.PostgresModel) diag.Diagnostics {
-	assignStr(postgresd.Id, &state.Id)
-	assignStr(postgresd.Name, &state.Name)
-	assignStr(postgresd.State, &state.State)
-	assignStr(postgresd.Location, &state.Location)
-	assignStr(postgresd.VmSize, &state.VmSize)
-	assignStr(postgresd.VmSize, &state.VmSize)
-	assignInt(postgresd.StorageSizeGib, &state.StorageSizeGib)
-	assignBool(postgresd.Primary, &state.Primary)
-	assignStr(postgresd.HaType, &state.HaType)
-	assignStr(postgresd.Version, &state.Version)
-	assignStr(postgresd.ConnectionString, &state.ConnectionString)
-	assignStr(postgresd.EarliestRestoreTime, &state.EarliestRestoreTime)
-	assignStr(postgresd.LatestRestoreTime, &state.LatestRestoreTime)
+func setPostgresStateDatasource(ctx context.Context, postgresd *ubicloud_client.PostgresDatabase, state *datasource_postgres.PostgresModel) diag.Diagnostics {
+	state.Id = types.StringValue(postgresd.Id)
+	state.Name = types.StringValue(postgresd.Name)
+	state.State = types.StringValue(postgresd.State)
+	state.Location = types.StringValue(postgresd.Location)
+	state.VmSize = types.StringValue(postgresd.VmSize)
+	state.StorageSizeGib = types.Int64Value(int64(postgresd.StorageSizeGib))
+	state.Primary = types.BoolValue(postgresd.Primary)
+	state.HaType = types.StringValue(postgresd.HaType)
+	state.Version = types.StringValue(string(postgresd.Version))
+	state.ConnectionString = types.StringPointerValue(postgresd.ConnectionString)
+	state.EarliestRestoreTime = types.StringPointerValue(postgresd.EarliestRestoreTime)
+	state.LatestRestoreTime = types.StringValue(postgresd.LatestRestoreTime)
 
 	firewallRulesListValue, diags := GetPostgresFirewallRulesState(ctx, postgresd.FirewallRules)
 	if diags.HasError() {
@@ -114,21 +113,19 @@ func setPostgresStateDatasource(ctx context.Context, postgresd *ubicloud_client.
 	return diags
 }
 
-func GetPostgresFirewallRulesState(ctx context.Context, firewallRules *[]ubicloud_client.PostgresFirewallRule) (basetypes.ListValue, diag.Diagnostics) {
+func GetPostgresFirewallRulesState(ctx context.Context, firewallRules []ubicloud_client.PostgresFirewallRule) (basetypes.ListValue, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	firewallRulesValue := datasource_postgres.FirewallRulesValue{}
-	var firewallRulesValues []datasource_postgres.FirewallRulesValue
-	if firewallRules != nil && len(*firewallRules) > 0 {
-		for _, r := range *firewallRules {
-			fr := datasource_postgres.NewFirewallRulesValueMust(firewallRulesValue.AttributeTypes(ctx), map[string]attr.Value{
-				"id":   types.StringPointerValue(r.Id),
-				"cidr": types.StringPointerValue(r.Cidr),
-			})
-			firewallRulesValues = append(firewallRulesValues, fr)
-		}
-	} else {
-		firewallRulesValues = []datasource_postgres.FirewallRulesValue{}
+	firewallRulesValues := make([]datasource_postgres.FirewallRulesValue, 0, len(firewallRules))
+	for _, r := range firewallRules {
+		fr := datasource_postgres.NewFirewallRulesValueMust(firewallRulesValue.AttributeTypes(ctx), map[string]attr.Value{
+			"cidr":        types.StringValue(r.Cidr),
+			"description": types.StringPointerValue(r.Description),
+			"id":          types.StringValue(r.Id),
+			"port":        int64PointerValue(r.Port),
+		})
+		firewallRulesValues = append(firewallRulesValues, fr)
 	}
 
 	firewallRulesListValue, diag := types.ListValueFrom(ctx, firewallRulesValue.Type(ctx), firewallRulesValues)

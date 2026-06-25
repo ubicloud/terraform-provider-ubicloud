@@ -27,14 +27,17 @@ resource "ubicloud_firewall_rule" "ssh" {
 
 ### Required
 
-- `cidr` (String) CIDR of the firewall rule
+- `cidr` (String) CIDR or private subnet id or name to allow
 
 ### Optional
 
-- `firewall_name` (String) Name of the firewall
+- `description` (String) Description to use for the firewall rule
+- `firewall_id` (String)
+- `firewall_name` (String) Firewall ID or name
 - `location` (String) The Ubicloud location/region
-- `port_range` (String) Port range of the firewall rule
+- `port_range` (String) Port range to allow
 - `project_id` (String) ID of the project
+- `protocol` (String) Protocol to allow (tcp or udp, default tcp)
 
 ### Read-Only
 
@@ -43,6 +46,8 @@ resource "ubicloud_firewall_rule" "ssh" {
 ## Import
 
 Import is supported using the following syntax:
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 terraform import ubicloud_firewall_rule.example <project_id>,<location>,<firewall_name>,<rule_id>

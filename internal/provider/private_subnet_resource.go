@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -185,9 +186,9 @@ func (r *privateSubnetResource) ImportState(ctx context.Context, req resource.Im
 }
 
 func setPrivateSubnetStateResource(ctx context.Context, ps *ubicloud_client.PrivateSubnet, state *resource_private_subnet.PrivateSubnetModel) diag.Diagnostics {
-	assignStr(ps.Id, &state.Id)
-	assignStr(ps.Net4, &state.Net4)
-	assignStr(ps.Net6, &state.Net6)
+	state.Id = types.StringValue(ps.Id)
+	state.Net4 = types.StringValue(ps.Net4)
+	state.Net6 = types.StringValue(ps.Net6)
 
 	nicsListValue, diags := GetNicsState(ctx, ps.Nics)
 	if diags.HasError() {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -62,13 +63,13 @@ func (r *firewallResource) Create(ctx context.Context, req resource.CreateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	body := ubicloud_client.CreateFirewallJSONRequestBody{}
+	body := ubicloud_client.CreateLocationFirewallJSONRequestBody{}
 	if state.Description.ValueString() != "" {
 		body.Description = state.Description.ValueStringPointer()
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Creating firewall: project_id=%s", state.ProjectId.ValueString()))
-	firewallResp, err := r.uc.client.CreateFirewallWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString(), body)
+	firewallResp, err := r.uc.client.CreateLocationFirewallWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Error creating firewall: project_id=%s", state.ProjectId.ValueString()),
@@ -84,9 +85,9 @@ func (r *firewallResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	assignStr(firewallResp.JSON200.Id, &state.Id)
-	assignStr(firewallResp.JSON200.Name, &state.Name)
-	assignStr(firewallResp.JSON200.Description, &state.Description)
+	state.Id = types.StringValue(firewallResp.JSON200.Id)
+	state.Name = types.StringValue(firewallResp.JSON200.Name)
+	state.Description = types.StringValue(firewallResp.JSON200.Description)
 
 	firewallRulesListValue, fwRulesDiags := GetFirewallRulesState(ctx, firewallResp.JSON200.FirewallRules)
 	resp.Diagnostics.Append(fwRulesDiags...)
@@ -108,7 +109,7 @@ func (r *firewallResource) Read(ctx context.Context, req resource.ReadRequest, r
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Reading firewall: %s", firewallResourceLogIdentifier(&state)))
-	firewallResp, err := r.uc.client.GetFirewallDetailsWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString())
+	firewallResp, err := r.uc.client.GetLocationFirewallDetailsWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Error reading firewall: %s", firewallResourceLogIdentifier(&state)),
@@ -124,9 +125,9 @@ func (r *firewallResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
-	assignStr(firewallResp.JSON200.Name, &state.Name)
-	assignStr(firewallResp.JSON200.Location, &state.Location)
-	assignStr(firewallResp.JSON200.Description, &state.Description)
+	state.Name = types.StringValue(firewallResp.JSON200.Name)
+	state.Location = types.StringValue(firewallResp.JSON200.Location)
+	state.Description = types.StringValue(firewallResp.JSON200.Description)
 
 	firewallRulesListValue, fwRulesDiags := GetFirewallRulesState(ctx, firewallResp.JSON200.FirewallRules)
 	resp.Diagnostics.Append(fwRulesDiags...)
@@ -160,7 +161,7 @@ func (r *firewallResource) Delete(ctx context.Context, req resource.DeleteReques
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Deleting firewall: %s", firewallResourceLogIdentifier(&state)))
-	firewallResp, err := r.uc.client.DeleteFirewallWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString())
+	firewallResp, err := r.uc.client.DeleteLocationFirewallWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Error deleting firewall: %s", firewallResourceLogIdentifier(&state)),

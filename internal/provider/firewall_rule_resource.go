@@ -11,6 +11,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -62,7 +63,7 @@ func (r *firewallRuleResource) Create(ctx context.Context, req resource.CreateRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	body := ubicloud_client.CreateFirewallRuleJSONRequestBody{
+	body := ubicloud_client.CreateLocationFirewallRuleJSONRequestBody{
 		Cidr: state.Cidr.ValueString(),
 	}
 	if state.PortRange.ValueString() != "" {
@@ -70,7 +71,7 @@ func (r *firewallRuleResource) Create(ctx context.Context, req resource.CreateRe
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Creating firewall rule: project_id=%s, location=%s, firewall_name: %s", state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString()))
-	firewallRuleResp, err := r.uc.client.CreateFirewallRuleWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString(), body)
+	firewallRuleResp, err := r.uc.client.CreateLocationFirewallRuleWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Error creating firewall rule: project_id=%s, location=%s, firewall_name: %s", state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString()),
@@ -86,9 +87,31 @@ func (r *firewallRuleResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	assignStr(firewallRuleResp.JSON200.Id, &state.Id)
-	assignStr(firewallRuleResp.JSON200.Cidr, &state.Cidr)
-	assignStr(firewallRuleResp.JSON200.PortRange, &state.PortRange)
+	// The create response is anyOf {FirewallRule, []FirewallRule}: a cidr that is a
+	// private subnet reference fans out to several rules. This single-rule resource
+	// tracks the first; warn so the operator knows the others exist server-side.
+	firewallRule, err := firewallRuleResp.JSON200.AsFirewallRule()
+	if err != nil {
+		rules, arrErr := firewallRuleResp.JSON200.AsFirewallRuleOrRules1()
+		if arrErr != nil || len(rules) == 0 {
+			resp.Diagnostics.AddError(
+				"Error parsing firewall rule response",
+				err.Error(),
+			)
+			return
+		}
+		firewallRule = rules[0]
+		if len(rules) > 1 {
+			resp.Diagnostics.AddWarning(
+				"Firewall rule input expanded to multiple rules",
+				fmt.Sprintf("The create returned %d firewall rules; only the first is tracked by this resource. The remaining rules exist server-side and are not managed by Terraform.", len(rules)),
+			)
+		}
+	}
+
+	state.Id = types.StringValue(firewallRule.Id)
+	state.Cidr = types.StringValue(firewallRule.Cidr)
+	state.PortRange = types.StringValue(firewallRule.PortRange)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -102,7 +125,7 @@ func (r *firewallRuleResource) Read(ctx context.Context, req resource.ReadReques
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Reading firewall rule: %s", firewallRuleResourceLogIdentifier(&state)))
-	firewallRuleResp, err := r.uc.client.GetFirewallRuleDetailsWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString(), state.Id.ValueString())
+	firewallRuleResp, err := r.uc.client.GetLocationFirewallFirewallRuleDetailsWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString(), state.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Error reading firewall rule: %s", firewallRuleResourceLogIdentifier(&state)),
@@ -118,9 +141,9 @@ func (r *firewallRuleResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
-	assignStr(firewallRuleResp.JSON200.Id, &state.Id)
-	assignStr(firewallRuleResp.JSON200.Cidr, &state.Cidr)
-	assignStr(firewallRuleResp.JSON200.PortRange, &state.PortRange)
+	state.Id = types.StringValue(firewallRuleResp.JSON200.Id)
+	state.Cidr = types.StringValue(firewallRuleResp.JSON200.Cidr)
+	state.PortRange = types.StringValue(firewallRuleResp.JSON200.PortRange)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -146,7 +169,7 @@ func (r *firewallRuleResource) Delete(ctx context.Context, req resource.DeleteRe
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Deleting firewall rule: %s", firewallRuleResourceLogIdentifier(&state)))
-	firewallRuleResp, err := r.uc.client.DeleteFirewallRuleWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString(), state.Id.ValueString())
+	firewallRuleResp, err := r.uc.client.DeleteLocationFirewallFirewallRuleWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallName.ValueString(), state.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Error deleting firewall rule: %s", firewallRuleResourceLogIdentifier(&state)),

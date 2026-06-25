@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -63,16 +64,16 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	storageSize := int(state.StorageSize.ValueInt64())
 	body := ubicloud_client.CreatePostgresDatabaseJSONRequestBody{
-		Size: state.Size.ValueString(),
-		StorageSize: &storageSize,
+		Size:        state.Size.ValueString(),
+		StorageSize: int(state.StorageSize.ValueInt64()),
 	}
 	if state.HaType.ValueString() != "" {
 		body.HaType = state.HaType.ValueStringPointer()
 	}
 	if state.Version.ValueString() != "" {
-		body.Version = state.Version.ValueStringPointer()
+		version := ubicloud_client.CreatePostgresDatabaseJSONBodyVersion(state.Version.ValueString())
+		body.Version = &version
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Creating postgres database: %s", postgresResourceLogIdentifier(&state)))
@@ -189,16 +190,16 @@ func (r *postgresResource) ImportState(ctx context.Context, req resource.ImportS
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), idParts[2])...)
 }
 
-func setPostgresStateResource(ctx context.Context, postgresd *ubicloud_client.PostgresDetailed, state *resource_postgres.PostgresModel) diag.Diagnostics {
-	assignStr(postgresd.Id, &state.Id)
-	assignStr(postgresd.Name, &state.Name)
-	assignStr(postgresd.Location, &state.Location)
-	assignStr(postgresd.VmSize, &state.VmSize)
-	assignStr(postgresd.VmSize, &state.Size)
-	assignInt(postgresd.StorageSizeGib, &state.StorageSizeGib)
-	assignBool(postgresd.Primary, &state.Primary)
-	assignStr(postgresd.HaType, &state.HaType)
-	assignStr(postgresd.Version, &state.Version)
+func setPostgresStateResource(ctx context.Context, postgresd *ubicloud_client.PostgresDatabase, state *resource_postgres.PostgresModel) diag.Diagnostics {
+	state.Id = types.StringValue(postgresd.Id)
+	state.Name = types.StringValue(postgresd.Name)
+	state.Location = types.StringValue(postgresd.Location)
+	state.VmSize = types.StringValue(postgresd.VmSize)
+	state.Size = types.StringValue(postgresd.VmSize)
+	state.StorageSizeGib = types.Int64Value(int64(postgresd.StorageSizeGib))
+	state.Primary = types.BoolValue(postgresd.Primary)
+	state.HaType = types.StringValue(postgresd.HaType)
+	state.Version = types.StringValue(string(postgresd.Version))
 
 	firewallRulesListValue, diags := GetPostgresFirewallRulesState(ctx, postgresd.FirewallRules)
 	if diags.HasError() {

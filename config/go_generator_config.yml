@@ -3,3 +3,28 @@ generate:
   client: true
   models: true
 output: internal/generated/ubicloud_client/client.go
+output-options:
+  # The live spec defines several components/responses that share a name with a
+  # components/schemas entry (e.g. PostgresDatabase, Vm, Firewall), which
+  # oapi-codegen cannot auto-rename. Resolve by suffixing the colliding response-section
+  # types; schema types keep their bare names, so the hand-written client callers are
+  # unaffected.
+  resolve-type-name-collisions: true
+  # The provider implements exactly six resources (firewall, firewall_rule, postgres,
+  # private_subnet, project, vm). The spec also defines domains the provider does not
+  # implement; oapi-codegen generates unused client code for them and hits a dangling
+  # reference (components/responses/Kubeconfig has an empty schema and no namesake type).
+  # Drop the operations for every out-of-scope domain by tag. models:true still emits all
+  # component schemas, so types referenced by in-scope responses remain. The postgres
+  # sub-resource tags (Postgres Firewall Rule / Log Destination / Metric Destination) are
+  # kept because they belong to the in-scope postgres domain.
+  exclude-tags:
+    - Audit Log
+    - GitHub
+    - Inference Api Key
+    - Inference Endpoint
+    - Kubernetes Cluster
+    - Load Balancer
+    - Machine Image
+    - Private Location
+    - SSH Public Key
