@@ -9,6 +9,8 @@ import (
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/resource_firewall"
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/ubicloud_client"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -89,7 +91,7 @@ func (r *firewallResource) Create(ctx context.Context, req resource.CreateReques
 	state.Name = types.StringValue(firewallResp.JSON200.Name)
 	state.Description = types.StringValue(firewallResp.JSON200.Description)
 
-	firewallRulesListValue, fwRulesDiags := GetFirewallRulesState(ctx, firewallResp.JSON200.FirewallRules)
+	firewallRulesListValue, fwRulesDiags := getFirewallRulesStateResource(ctx, firewallResp.JSON200.FirewallRules)
 	resp.Diagnostics.Append(fwRulesDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -129,7 +131,7 @@ func (r *firewallResource) Read(ctx context.Context, req resource.ReadRequest, r
 	state.Location = types.StringValue(firewallResp.JSON200.Location)
 	state.Description = types.StringValue(firewallResp.JSON200.Description)
 
-	firewallRulesListValue, fwRulesDiags := GetFirewallRulesState(ctx, firewallResp.JSON200.FirewallRules)
+	firewallRulesListValue, fwRulesDiags := getFirewallRulesStateResource(ctx, firewallResp.JSON200.FirewallRules)
 	resp.Diagnostics.Append(fwRulesDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -192,6 +194,34 @@ func (r *firewallResource) ImportState(ctx context.Context, req resource.ImportS
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), idParts[0])...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("location"), idParts[1])...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), idParts[2])...)
+}
+
+func getFirewallRulesStateResource(ctx context.Context, firewallRules []ubicloud_client.FirewallRule) (types.List, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	firewallRulesValue := resource_firewall.FirewallRulesValue{}
+	var firewallRulesValues []resource_firewall.FirewallRulesValue
+	if len(firewallRules) > 0 {
+		for _, r := range firewallRules {
+			fr := resource_firewall.NewFirewallRulesValueMust(firewallRulesValue.AttributeTypes(ctx), map[string]attr.Value{
+				"id":          types.StringValue(r.Id),
+				"cidr":        types.StringValue(r.Cidr),
+				"port_range":  types.StringValue(r.PortRange),
+				"description": types.StringValue(r.Description),
+				"protocol":    types.StringValue(string(r.Protocol)),
+			})
+			firewallRulesValues = append(firewallRulesValues, fr)
+		}
+	} else {
+		firewallRulesValues = []resource_firewall.FirewallRulesValue{}
+	}
+
+	fwRules, diag := types.ListValueFrom(ctx, firewallRulesValue.Type(ctx), firewallRulesValues)
+	diags.Append(diag...)
+	if diags.HasError() {
+		return types.ListUnknown(firewallRulesValue.Type(ctx)), diags
+	}
+
+	return fwRules, diags
 }
 
 func firewallResourceLogIdentifier(state *resource_firewall.FirewallModel) string {
