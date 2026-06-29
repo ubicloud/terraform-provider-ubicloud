@@ -20,7 +20,7 @@ func TestAccFirewallRuleDataSource(t *testing.T) {
     resource "ubicloud_firewall_rule" "testaccfwr1" {
       project_id  = ubicloud_firewall.testacc.project_id
       location    = ubicloud_firewall.testacc.location
-      firewall_id = ubicloud_firewall.testacc.id
+      firewall_reference = ubicloud_firewall.testacc.id
       cidr        = "1.2.3.0/24"
       port_range  = "80..8080"
     }
@@ -28,7 +28,7 @@ func TestAccFirewallRuleDataSource(t *testing.T) {
     resource "ubicloud_firewall_rule" "testaccfwr2" {
       project_id  = ubicloud_firewall.testacc.project_id
       location    = ubicloud_firewall.testacc.location
-      firewall_id = ubicloud_firewall.testacc.id
+      firewall_reference = ubicloud_firewall.testacc.id
       cidr        = "0.0.0.0/0"
       port_range  = "22..22"
     }			

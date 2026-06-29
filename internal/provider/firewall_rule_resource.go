@@ -70,11 +70,11 @@ func (r *firewallRuleResource) Create(ctx context.Context, req resource.CreateRe
 		body.PortRange = state.PortRange.ValueStringPointer()
 	}
 
-	tflog.Debug(ctx, fmt.Sprintf("Creating firewall rule: project_id=%s, location=%s, firewall_id: %s", state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallId.ValueString()))
-	firewallRuleResp, err := r.uc.client.CreateLocationFirewallRuleWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallId.ValueString(), body)
+	tflog.Debug(ctx, fmt.Sprintf("Creating firewall rule: project_id=%s, location=%s, firewall_reference: %s", state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallReference.ValueString()))
+	firewallRuleResp, err := r.uc.client.CreateLocationFirewallRuleWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallReference.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			fmt.Sprintf("Error creating firewall rule: project_id=%s, location=%s, firewall_id: %s", state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallId.ValueString()),
+			fmt.Sprintf("Error creating firewall rule: project_id=%s, location=%s, firewall_reference: %s", state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallReference.ValueString()),
 			err.Error(),
 		)
 		return
@@ -83,7 +83,7 @@ func (r *firewallRuleResource) Create(ctx context.Context, req resource.CreateRe
 	if firewallRuleResp.StatusCode() != http.StatusOK {
 		resp.Diagnostics.AddError(
 			"Unexpected HTTP status code creating firewall rule",
-			fmt.Sprintf("Received %s creating new firewall rule: project_id=%s, location=%s, firewall_id=%s. Details: %s", firewallRuleResp.Status(), state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallId.ValueString(), firewallRuleResp.Body))
+			fmt.Sprintf("Received %s creating new firewall rule: project_id=%s, location=%s, firewall_reference=%s. Details: %s", firewallRuleResp.Status(), state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallReference.ValueString(), firewallRuleResp.Body))
 		return
 	}
 
@@ -101,7 +101,6 @@ func (r *firewallRuleResource) Create(ctx context.Context, req resource.CreateRe
 	state.PortRange = normalizedPortRange(state.PortRange.ValueString(), rule.PortRange)
 	state.Description = types.StringValue(rule.Description)
 	state.Protocol = types.StringValue(string(rule.Protocol))
-	state.FirewallReference = state.FirewallId
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -115,7 +114,7 @@ func (r *firewallRuleResource) Read(ctx context.Context, req resource.ReadReques
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Reading firewall rule: %s", firewallRuleResourceLogIdentifier(&state)))
-	firewallRuleResp, err := r.uc.client.GetLocationFirewallFirewallRuleDetailsWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallId.ValueString(), state.Id.ValueString())
+	firewallRuleResp, err := r.uc.client.GetLocationFirewallFirewallRuleDetailsWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallReference.ValueString(), state.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Error reading firewall rule: %s", firewallRuleResourceLogIdentifier(&state)),
@@ -136,7 +135,6 @@ func (r *firewallRuleResource) Read(ctx context.Context, req resource.ReadReques
 	state.PortRange = normalizedPortRange(state.PortRange.ValueString(), firewallRuleResp.JSON200.PortRange)
 	state.Description = types.StringValue(firewallRuleResp.JSON200.Description)
 	state.Protocol = types.StringValue(string(firewallRuleResp.JSON200.Protocol))
-	state.FirewallReference = state.FirewallId
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -162,7 +160,7 @@ func (r *firewallRuleResource) Delete(ctx context.Context, req resource.DeleteRe
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Deleting firewall rule: %s", firewallRuleResourceLogIdentifier(&state)))
-	firewallRuleResp, err := r.uc.client.DeleteLocationFirewallFirewallRuleWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallId.ValueString(), state.Id.ValueString())
+	firewallRuleResp, err := r.uc.client.DeleteLocationFirewallFirewallRuleWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallReference.ValueString(), state.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Error deleting firewall rule: %s", firewallRuleResourceLogIdentifier(&state)),
@@ -192,7 +190,7 @@ func (r *firewallRuleResource) ImportState(ctx context.Context, req resource.Imp
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("project_id"), idParts[0])...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("location"), idParts[1])...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("firewall_id"), idParts[2])...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("firewall_reference"), idParts[2])...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[3])...)
 }
 
@@ -216,5 +214,5 @@ func normalizePortRange(s string) string {
 }
 
 func firewallRuleResourceLogIdentifier(state *resource_firewall_rule.FirewallRuleModel) string {
-	return fmt.Sprintf("project_id=%s, location=%s, firewall_id=%s, rule_id=%s", state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallId.ValueString(), state.Id.ValueString())
+	return fmt.Sprintf("project_id=%s, location=%s, firewall_reference=%s, rule_id=%s", state.ProjectId.ValueString(), state.Location.ValueString(), state.FirewallReference.ValueString(), state.Id.ValueString())
 }
