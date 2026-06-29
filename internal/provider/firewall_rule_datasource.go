@@ -85,6 +85,8 @@ func (d *firewallRuleDataSource) Read(ctx context.Context, req datasource.ReadRe
 	state.Id = types.StringValue(firewallRuleResp.JSON200.Id)
 	state.Cidr = types.StringValue(firewallRuleResp.JSON200.Cidr)
 	state.PortRange = types.StringValue(firewallRuleResp.JSON200.PortRange)
+	state.Description = types.StringValue(firewallRuleResp.JSON200.Description)
+	state.Protocol = types.StringValue(string(firewallRuleResp.JSON200.Protocol))
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

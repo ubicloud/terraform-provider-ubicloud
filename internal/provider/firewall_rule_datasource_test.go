@@ -22,6 +22,8 @@ func TestAccFirewallRuleDataSource(t *testing.T) {
       firewall_name = ubicloud_firewall.testacc.name
       cidr          = "1.2.3.0/24"
       port_range    = "80..8080"
+      description   = "web"
+      protocol      = "tcp"
     }
 
     resource "ubicloud_firewall_rule" "testaccfwr2" {
@@ -29,8 +31,9 @@ func TestAccFirewallRuleDataSource(t *testing.T) {
       location      = ubicloud_firewall.testacc.location
       firewall_name = ubicloud_firewall.testacc.name
       cidr          = "0.0.0.0/0"
-      port_range    = "22..22"
-    }			
+      port_range    = "22..23"
+      protocol      = "udp"
+    }
     `, GetTestAccProjectId(), GetTestAccLocation())
 
 	dataConfig := `
@@ -78,13 +81,17 @@ func TestAccFirewallRuleDataSource(t *testing.T) {
 					resource.TestCheckResourceAttrSet("data.ubicloud_firewall_rule.testaccfwr1", "firewall_name"),
 					resource.TestCheckResourceAttr("data.ubicloud_firewall_rule.testaccfwr1", "cidr", "1.2.3.0/24"),
 					resource.TestCheckResourceAttr("data.ubicloud_firewall_rule.testaccfwr1", "port_range", "80..8080"),
+					resource.TestCheckResourceAttr("data.ubicloud_firewall_rule.testaccfwr1", "description", "web"),
+					resource.TestCheckResourceAttr("data.ubicloud_firewall_rule.testaccfwr1", "protocol", "tcp"),
 
 					resource.TestCheckResourceAttrSet("data.ubicloud_firewall_rule.testaccfwr2", "id"),
 					resource.TestCheckResourceAttr("data.ubicloud_firewall_rule.testaccfwr2", "project_id", GetTestAccProjectId()),
 					resource.TestCheckResourceAttr("data.ubicloud_firewall_rule.testaccfwr2", "location", GetTestAccLocation()),
 					resource.TestCheckResourceAttrSet("data.ubicloud_firewall_rule.testaccfwr2", "firewall_name"),
 					resource.TestCheckResourceAttr("data.ubicloud_firewall_rule.testaccfwr2", "cidr", "0.0.0.0/0"),
-					resource.TestCheckResourceAttr("data.ubicloud_firewall_rule.testaccfwr2", "port_range", "22..22"),
+					resource.TestCheckResourceAttr("data.ubicloud_firewall_rule.testaccfwr2", "port_range", "22..23"),
+					resource.TestCheckResourceAttr("data.ubicloud_firewall_rule.testaccfwr2", "description", ""),
+					resource.TestCheckResourceAttr("data.ubicloud_firewall_rule.testaccfwr2", "protocol", "udp"),
 				),
 			},
 		},

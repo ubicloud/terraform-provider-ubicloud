@@ -9,6 +9,7 @@ import (
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/resource_firewall"
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/ubicloud_client"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -85,17 +86,25 @@ func (r *firewallResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	state.Id = types.StringValue(firewallResp.JSON200.Id)
-	state.Name = types.StringValue(firewallResp.JSON200.Name)
-	state.Description = types.StringValue(firewallResp.JSON200.Description)
-
-	firewallRulesListValue, fwRulesDiags := GetFirewallRulesState(ctx, firewallResp.JSON200.FirewallRules)
-	resp.Diagnostics.Append(fwRulesDiags...)
+	// createLocationFirewall returns the base Firewall shape (openapi: no
+	// private_subnets); only getLocationFirewallDetails carries them. A firewall
+	// created through the API is attached to no private subnet (helpers/firewall.rb
+	// firewall_post only associates one on the web path), so its detailed view is the
+	// base fields with an empty private_subnets list. Mapping it through the same
+	// setter as Read makes the computed private_subnets known (an empty list) instead
+	// of leaving it unknown, which otherwise fails apply with "invalid result object".
+	created := &ubicloud_client.FirewallDetailed{
+		Id:             firewallResp.JSON200.Id,
+		Name:           firewallResp.JSON200.Name,
+		Location:       firewallResp.JSON200.Location,
+		Description:    firewallResp.JSON200.Description,
+		FirewallRules:  firewallResp.JSON200.FirewallRules,
+		PrivateSubnets: []ubicloud_client.PrivateSubnet{},
+	}
+	resp.Diagnostics.Append(setFirewallStateResource(ctx, created, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	state.FirewallRules = firewallRulesListValue
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -125,19 +134,36 @@ func (r *firewallResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
-	state.Name = types.StringValue(firewallResp.JSON200.Name)
-	state.Location = types.StringValue(firewallResp.JSON200.Location)
-	state.Description = types.StringValue(firewallResp.JSON200.Description)
-
-	firewallRulesListValue, fwRulesDiags := GetFirewallRulesState(ctx, firewallResp.JSON200.FirewallRules)
-	resp.Diagnostics.Append(fwRulesDiags...)
+	resp.Diagnostics.Append(setFirewallStateResource(ctx, firewallResp.JSON200, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// setFirewallStateResource maps a detailed firewall response onto the resource model.
+// project_id is not carried in the response and is preserved from the prior state/plan.
+func setFirewallStateResource(ctx context.Context, fw *ubicloud_client.FirewallDetailed, state *resource_firewall.FirewallModel) diag.Diagnostics {
+	state.Id = types.StringValue(fw.Id)
+	state.Name = types.StringValue(fw.Name)
+	state.Location = types.StringValue(fw.Location)
+	state.Description = types.StringValue(fw.Description)
+
+	firewallRulesListValue, diags := GetFirewallRulesState(ctx, fw.FirewallRules)
+	if diags.HasError() {
+		return diags
+	}
 	state.FirewallRules = firewallRulesListValue
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	privateSubnetsListValue, psDiags := GetPrivateSubnetsState(ctx, fw.PrivateSubnets)
+	diags.Append(psDiags...)
+	if diags.HasError() {
+		return diags
+	}
+	state.PrivateSubnets = privateSubnetsListValue
+
+	return diags
 }
 
 func (r *firewallResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {

@@ -42,16 +42,18 @@ resource "ubicloud_postgres" "example" {
 - `location` (String) Location of the Postgres database
 - `name` (String) Name of the Postgres database
 - `project_id` (String) ID of the project
-- `size` (String) Requested size for the underlying VM
 
 ### Optional
 
 - `flavor` (String) Kind of database
 - `ha_type` (String) High availability type
+- `parent` (String) Parent Postgres database. Give the parent database's name or id. The API reports the parent by name, so an imported read replica whose parent is configured by id plans a spurious replace; configure parent by name to avoid it.
 - `pg_config` (Map of String)
 - `pgbouncer_config` (Map of String)
 - `private_subnet_name` (String) Name for the private subnet (if not provided, a name will be auto-generated)
+- `restore_target` (String) RFC 3339 timestamp of the point in time to restore to, which must fall within the source database's backup window [earliest_restore_time, latest_restore_time]. Setting it (with parent as the source database) creates this database as a point-in-time restore off the parent instead of a fresh database. Write-only create input: it is not read back from the API, so an imported database shows restore_target unset and setting it in config after import forces replacement.
 - `restrict_by_default` (Boolean) Whether to restrict access by default (if so, firewall rules must be added to access)
+- `size` (String) Requested size for the underlying VM
 - `storage_size` (Number) Requested storage size in GiB
 - `tags` (Attributes List) Tags for the Postgres Database (see [below for nested schema](#nestedatt--tags))
 - `version` (String) PostgreSQL version
@@ -59,16 +61,19 @@ resource "ubicloud_postgres" "example" {
 ### Read-Only
 
 - `ca_certificates` (String) CA certificates of the root CA used to issue postgres server certificates
+- `connection_string` (String, Sensitive) Connection string to the Postgres database
 - `created_at` (String) Creation timestamp of the Postgres database
+- `earliest_restore_time` (String) Earliest restore time (if primary)
 - `fallback_active` (Boolean) Whether the primary server is running on a fallback instance type
 - `firewall_rules` (Attributes List) List of Postgres firewall rules (see [below for nested schema](#nestedatt--firewall_rules))
 - `hostname` (String) Hostname for the Postgres database
 - `id` (String) ID of the Postgres database
+- `latest_restore_time` (String) Latest restore time (if primary)"
 - `maintenance_window_start_at` (Number) Maintenance window start time
-- `parent` (String) Parent Postgres database
-- `password` (String) Password for the Postgres database
+- `password` (String, Sensitive) Password for the Postgres database
 - `primary` (Boolean) Is the database primary
 - `read_replica` (Boolean) If the database is a read replica or not
+- `state` (String) State of the Postgres database
 - `storage_size_gib` (Number) Storage size in GiB
 - `target_server_count` (Number) Target number of servers (primary + standbys)
 - `target_storage_size_gib` (Number) Desired storage size in GiB

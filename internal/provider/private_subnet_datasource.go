@@ -94,6 +94,7 @@ func setPrivateSubnetStateDatasource(ctx context.Context, ps *ubicloud_client.Pr
 	state.Id = types.StringValue(ps.Id)
 	state.Net4 = types.StringValue(ps.Net4)
 	state.Net6 = types.StringValue(ps.Net6)
+	state.State = types.StringValue(ps.State)
 
 	nicsListValue, diags := GetNicsState(ctx, ps.Nics)
 	if diags.HasError() {

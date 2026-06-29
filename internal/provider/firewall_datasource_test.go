@@ -34,6 +34,9 @@ func TestAccFirewallDataSource(t *testing.T) {
 					resource.TestCheckResourceAttr("data.ubicloud_firewall.testacc", "name", "tf-testacc"),
 					resource.TestCheckResourceAttr("data.ubicloud_firewall.testacc", "description", "Terraform acceptance testing"),
 					resource.TestCheckResourceAttr("data.ubicloud_firewall.testacc", "firewall_rules.#", "0"),
+					// private_subnets is mapped by the data source Read; a firewall with no
+					// attached subnet reads back as a known empty list.
+					resource.TestCheckResourceAttr("data.ubicloud_firewall.testacc", "private_subnets.#", "0"),
 				),
 			},
 		},

@@ -9,6 +9,7 @@ import (
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/resource_postgres"
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/ubicloud_client"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -20,7 +21,70 @@ var (
 	_ resource.Resource                = &postgresResource{}
 	_ resource.ResourceWithConfigure   = &postgresResource{}
 	_ resource.ResourceWithImportState = &postgresResource{}
+	_ resource.ResourceWithModifyPlan  = &postgresResource{}
 )
+
+// ModifyPlan enforces two plan-time invariants. On CREATE (no prior state) it checks the
+// size/parent invariant: a primary needs size; a read replica omits it and inherits the
+// parent's (size ConflictsWith parent). That branch reads the CONFIG, not the plan, since
+// size is computed, so an omitted size is unknown in the plan but a known null in config,
+// which distinguishes "the user left it out" from "it depends on an unresolved value"; a
+// genuinely unknown (interpolated) size is deferred to createPostgresPrimary. On UPDATE it
+// rejects an unsupported version change at plan time: a downgrade or multi-major jump (the
+// upgrade endpoint advances exactly one major, server-chosen) and a version change combined
+// with any other mutable change (an upgrade is irreversible and must be applied on its own),
+// so these fail before apply rather than mid-orchestration.
+func (r *postgresResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.State.Raw.IsNull() {
+		var config resource_postgres.PostgresModel
+		resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		// A restore (restore_target set) inherits size from its source, like a read replica, so
+		// the primary-size guard must skip it; otherwise an invalid restore_target with no parent
+		// gets both the AlsoRequires(parent) error and a misleading "missing size" error.
+		if !postgresHasRestoreTarget(&config) && postgresPrimaryMissingSize(config.Parent, config.Size) {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("size"),
+				"Missing size for primary postgres database",
+				"size is required to create a primary postgres database; omit it only for a read replica (set parent) or a restore (set parent and restore_target).",
+			)
+		}
+		// A restore must name a non-blank source via parent. AlsoRequires(parent) catches a
+		// null parent; catch an explicitly blank one here before it becomes POST .../postgres//restore.
+		if postgresHasRestoreTarget(&config) && !config.Parent.IsNull() && !config.Parent.IsUnknown() && strings.TrimSpace(config.Parent.ValueString()) == "" {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("parent"),
+				"Missing restore source",
+				"parent must name the source database to restore from; it cannot be blank when restore_target is set.",
+			)
+		}
+		return
+	}
+
+	// A null plan is a destroy: nothing to validate.
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var plan, state resource_postgres.PostgresModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if postgresAttrChanged(plan.Version, state.Version) {
+		if summary, detail := postgresVersionUpgradeError(plan.Version.ValueString(), state.Version.ValueString()); summary != "" {
+			resp.Diagnostics.AddAttributeError(path.Root("version"), summary, detail)
+		} else if postgresNonVersionMutableChanged(&plan, &state) {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("version"),
+				"Postgres version upgrade must be applied on its own",
+				"A major version upgrade cannot be combined with other changes (size, storage_size, ha_type, tags, pg_config, pgbouncer_config, name); apply the version change in a separate plan.")
+		}
+	}
+}
 
 func NewPostgresResource() resource.Resource {
 	return &postgresResource{}
@@ -64,6 +128,81 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
+	// A read replica and a point-in-time restore are each created off an existing source
+	// through a separate child endpoint, not via the create body (which forbids parent and
+	// restore_target). Dispatch on the inputs: restore_target set takes the restore path (its
+	// source is parent, AlsoRequires(parent)); otherwise a known, non-empty parent takes the
+	// read-replica path; a normal create leaves both unset. restore is checked first because a
+	// restore also sets parent (the source), and the only response difference is read_replica.
+	// Create reads the resolved plan, so a computed restore_target (e.g. the source's
+	// latest_restore_time) is a KNOWN value here even when it was unknown at plan; the
+	// known-only predicate never misclassifies it as a non-restore at apply.
+	var postgresd *ubicloud_client.PostgresDatabase
+	var diags diag.Diagnostics
+	switch {
+	case postgresHasRestoreTarget(&state):
+		tflog.Debug(ctx, fmt.Sprintf("Restoring postgres database: %s (source %s, restore_target %s)", postgresResourceLogIdentifier(&state), state.Parent.ValueString(), state.RestoreTarget.ValueString()))
+		postgresd, diags = r.createPostgresRestore(ctx, &state)
+	case postgresHasParent(&state):
+		tflog.Debug(ctx, fmt.Sprintf("Creating postgres read replica: %s (parent %s)", postgresResourceLogIdentifier(&state), state.Parent.ValueString()))
+		postgresd, diags = r.createPostgresReadReplica(ctx, &state)
+	default:
+		tflog.Debug(ctx, fmt.Sprintf("Creating postgres database: %s", postgresResourceLogIdentifier(&state)))
+		postgresd, diags = r.createPostgresPrimary(ctx, &state)
+	}
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Every dispatch path returns the PostgresDatabase body on HTTP 200; a nil here means the
+	// API answered 200 with no JSON body (a contract violation committee blocks in TEST mode),
+	// so fail closed rather than nil-deref in setPostgresStateResource.
+	if postgresd == nil {
+		resp.Diagnostics.AddError(
+			"Empty response creating postgres database",
+			fmt.Sprintf("the API returned no database body: %s", postgresResourceLogIdentifier(&state)),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(setPostgresStateResource(ctx, postgresd, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Hydrate pg_config/pgbouncer_config from the dedicated config endpoint (the create
+	// response does not carry them), exactly as Read does, for both the primary and the
+	// read-replica path. Without this an omitted-config create leaves them at the planned
+	// unknown and Terraform rejects the apply. The GET is best-effort (it can 500 at
+	// creating-state, before representative_server is ready), so default any still-unknown
+	// map to empty afterward: an omitted-config create carries no overrides, so empty is the
+	// server's user_config and the apply converges to a known value either way.
+	resp.Diagnostics.Append(r.hydratePostgresConfig(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString(), &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ensurePostgresConfigKnown(&state)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// createPostgresPrimary runs the normal create (POST .../postgres/{name}). The
+// create body carries size/storage_size and the optional ha_type/version; the
+// parent-inherited attributes that ConflictsWith parent are all primary inputs here.
+func (r *postgresResource) createPostgresPrimary(ctx context.Context, state *resource_postgres.PostgresModel) (*ubicloud_client.PostgresDatabase, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	// size is computed_optional so a read replica can omit it; a primary cannot. Catch
+	// a missing/empty size here (e.g. an interpolated size that resolved empty, which
+	// the plan-time guard defers as unknown) rather than posting an empty size and
+	// failing with an opaque server error.
+	if state.Size.IsNull() || state.Size.IsUnknown() || state.Size.ValueString() == "" {
+		diags.AddError(
+			"Missing size for primary postgres database",
+			fmt.Sprintf("size is required to create a primary postgres database: %s", postgresResourceLogIdentifier(state)),
+		)
+		return nil, diags
+	}
 	body := ubicloud_client.CreatePostgresDatabaseJSONRequestBody{
 		Size:        state.Size.ValueString(),
 		StorageSize: int(state.StorageSize.ValueInt64()),
@@ -75,31 +214,52 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 		version := ubicloud_client.CreatePostgresDatabaseJSONBodyVersion(state.Version.ValueString())
 		body.Version = &version
 	}
+	// Wire the remaining create inputs so a value set in config reaches the server instead of
+	// being silently dropped to a default. flavor is read back (stays Computed); tags is read
+	// back too; restrict_by_default and private_subnet_name are create-only and write-only.
+	// Each is nil-guarded so an unset/unknown attribute is omitted from the request body.
+	if state.Flavor.ValueString() != "" {
+		body.Flavor = state.Flavor.ValueStringPointer()
+	}
+	if !state.RestrictByDefault.IsNull() && !state.RestrictByDefault.IsUnknown() {
+		body.RestrictByDefault = state.RestrictByDefault.ValueBoolPointer()
+	}
+	if state.PrivateSubnetName.ValueString() != "" {
+		body.PrivateSubnetName = state.PrivateSubnetName.ValueStringPointer()
+	}
+	// Transmit the user config maps so a create-with-config lands the overrides server-side;
+	// without this the backend keeps its defaults and the config read-back in Read would
+	// drift state away from the plan. Unset/unknown maps are omitted (postgresConfigToBody).
+	pgConfig, d := postgresConfigToBody(ctx, state.PgConfig)
+	diags.Append(d...)
+	body.PgConfig = pgConfig
+	pgbouncerConfig, d := postgresConfigToBody(ctx, state.PgbouncerConfig)
+	diags.Append(d...)
+	body.PgbouncerConfig = pgbouncerConfig
+	tags, d := postgresTagsToBody(ctx, state.Tags)
+	diags.Append(d...)
+	body.Tags = tags
+	if diags.HasError() {
+		return nil, diags
+	}
 
-	tflog.Debug(ctx, fmt.Sprintf("Creating postgres database: %s", postgresResourceLogIdentifier(&state)))
 	postgresResp, err := r.uc.client.CreatePostgresDatabaseWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString(), body)
 	if err != nil {
-		resp.Diagnostics.AddError(
-			fmt.Sprintf("Error creating postgres database: %s", postgresResourceLogIdentifier(&state)),
+		diags.AddError(
+			fmt.Sprintf("Error creating postgres database: %s", postgresResourceLogIdentifier(state)),
 			err.Error(),
 		)
-		return
+		return nil, diags
 	}
 
 	if postgresResp.StatusCode() != http.StatusOK {
-		resp.Diagnostics.AddError(
+		diags.AddError(
 			"Unexpected HTTP status code creating postgres database",
-			fmt.Sprintf("Received %s for postgres database: %s. Details: %s", postgresResp.Status(), postgresResourceLogIdentifier(&state), postgresResp.Body))
-		return
+			fmt.Sprintf("Received %s for postgres database: %s. Details: %s", postgresResp.Status(), postgresResourceLogIdentifier(state), postgresResp.Body))
+		return nil, diags
 	}
 
-	diags := setPostgresStateResource(ctx, postgresResp.JSON200, &state)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	return postgresResp.JSON200, diags
 }
 
 func (r *postgresResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -110,8 +270,12 @@ func (r *postgresResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
+	projectID := state.ProjectId.ValueString()
+	location := state.Location.ValueString()
+	name := state.Name.ValueString()
+
 	tflog.Debug(ctx, fmt.Sprintf("Reading postgres database: %s", postgresResourceLogIdentifier(&state)))
-	postgresResp, err := r.uc.client.GetPostgresDatabaseDetailsWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString())
+	postgresResp, err := r.uc.client.GetPostgresDatabaseDetailsWithResponse(ctx, projectID, location, name)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Error reading postgres database: %s", postgresResourceLogIdentifier(&state)),
@@ -133,20 +297,231 @@ func (r *postgresResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
+	resp.Diagnostics.Append(r.hydratePostgresConfig(ctx, projectID, location, name, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *postgresResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var state resource_postgres.PostgresModel
+// hydratePostgresConfig reads the user config maps from the dedicated config endpoint and
+// overlays them onto state. The detailed GET does not carry pg_config/pgbouncer_config, so
+// without this read-back resource state is not authoritative for them and a declarative
+// config replace cannot compute key deletions. It is best-effort: at creating-state the
+// config GET can fail (it derives default_pg_config from representative_server, which may
+// not exist yet), so a transport error or non-200 leaves the prior values untouched rather
+// than failing the whole Read. Only a genuine map-decode error surfaces as a diagnostic.
+func (r *postgresResource) hydratePostgresConfig(ctx context.Context, projectID, location, name string, state *resource_postgres.PostgresModel) diag.Diagnostics {
+	var diags diag.Diagnostics
+	configResp, err := r.uc.client.GetPostgresDatabaseConfigWithResponse(ctx, projectID, location, name)
+	if err != nil {
+		tflog.Debug(ctx, fmt.Sprintf("Skipping postgres config hydration (transport error): %s: %s", name, err.Error()))
+		return diags
+	}
+	if configResp.StatusCode() != http.StatusOK || configResp.JSON200 == nil {
+		tflog.Debug(ctx, fmt.Sprintf("Skipping postgres config hydration (status %d): %s", configResp.StatusCode(), name))
+		return diags
+	}
 
+	return applyPostgresConfigToState(ctx, configResp.JSON200, state)
+}
+
+// ensurePostgresConfigKnown defaults a still-unknown pg_config/pgbouncer_config to an empty
+// known map. Create hydrates config from the best-effort GET .../config; when that read is
+// skipped (a non-200 at creating-state) an omitted-config map stays unknown, which Terraform
+// rejects after apply. Only an unknown map is touched, so a user-set value and a hydrated
+// value are left intact; the empty map matches the server's user_config when nothing was sent.
+func ensurePostgresConfigKnown(state *resource_postgres.PostgresModel) {
+	empty := types.MapValueMust(types.StringType, map[string]attr.Value{})
+	if state.PgConfig.IsUnknown() {
+		state.PgConfig = empty
+	}
+	if state.PgbouncerConfig.IsUnknown() {
+		state.PgbouncerConfig = empty
+	}
+}
+
+// Update orchestrates the in-place mutable set, one endpoint per attribute group. The
+// create-only immutables (flavor, parent, restrict_by_default, private_subnet_name,
+// project_id, location) carry RequiresReplace, so Terraform replaces for them and they
+// never reach Update. maintenance_window_start_at is a computed read field (set through
+// the dedicated set-maintenance-window operation, not a declarative attribute), so it is
+// not part of the dispatch. version -> the imperative one-major upgrade (POST .../upgrade,
+// server-chosen target) is dispatched here, but ONLY on its own: it is rejected when
+// combined with any other mutable change, since it is irreversible and a later failure
+// would strand it. The remaining set maps as: {size, storage_size, ha_type, tags} -> PATCH,
+// {pg_config, pgbouncer_config} -> config merge (only the changed map, so the companion is
+// never wiped), name -> rename. All calls key off project_id/location/NAME; rename runs LAST
+// so the content mutations address the stable old name and the name flip is the final step.
+func (r *postgresResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan, state resource_postgres.PostgresModel
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.AddError(
-		"Update of postgres is not supported",
-		fmt.Sprintf("Cannot update postgres database: %s", postgresResourceLogIdentifier(&state)))
+	logID := postgresResourceLogIdentifier(&state)
+
+	projectID := state.ProjectId.ValueString()
+	location := state.Location.ValueString()
+	oldName := state.Name.ValueString()
+	dispatched := false
+
+	// version -> imperative one-major upgrade (POST .../upgrade), not a PATCH field. Handle
+	// it first so a rejected jump aborts before any other mutation lands (no half-apply).
+	versionChanged := postgresAttrChanged(plan.Version, state.Version)
+	if versionChanged {
+		if summary, detail := postgresVersionUpgradeError(plan.Version.ValueString(), state.Version.ValueString()); summary != "" {
+			resp.Diagnostics.AddError(summary, fmt.Sprintf("%s: %s", detail, logID))
+			return
+		}
+		// A version upgrade is irreversible and isolated (ubi exposes it as `ubi pg upgrade`,
+		// not a modify option). Refuse to combine it with other mutations: dispatching the
+		// upgrade then erroring on a later PATCH/config/rename would strand an irreversible
+		// upgrade with state unreconciled. Reject before any call (no half-apply).
+		if postgresNonVersionMutableChanged(&plan, &state) {
+			resp.Diagnostics.AddError(
+				"Postgres version upgrade must be applied on its own",
+				fmt.Sprintf("A major version upgrade cannot be combined with other changes (size, storage_size, ha_type, tags, pg_config, pgbouncer_config, name); apply the version change separately: %s.", logID))
+			return
+		}
+		if postgresUpgradeInFlight(&plan, &state) {
+			// An upgrade toward the planned version is already pending. A second POST would be
+			// rejected by the backend convergence precheck, so do not re-dispatch; the re-read
+			// + override below reconcile the plan with the in-flight target_version. Surface a
+			// FAILED upgrade rather than masking it as perpetual progress.
+			resp.Diagnostics.Append(r.checkPostgresUpgradeFailed(ctx, projectID, location, oldName, logID)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+		} else {
+			tflog.Debug(ctx, fmt.Sprintf("Upgrading postgres database: %s", logID))
+			resp.Diagnostics.Append(r.applyPostgresUpgrade(ctx, projectID, location, oldName, logID)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+		}
+		dispatched = true
+	}
+
+	patchBody, patchChanged, diags := postgresPatchBody(ctx, &plan, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if patchChanged {
+		tflog.Debug(ctx, fmt.Sprintf("Patching postgres database: %s", logID))
+		resp.Diagnostics.Append(r.applyPostgresPatch(ctx, projectID, location, oldName, patchBody, logID)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		dispatched = true
+	}
+
+	var configResult *ubicloud_client.PostgresConfig
+	configBody, configChanged, configDiags := postgresConfigPatchBody(ctx, &plan, &state)
+	resp.Diagnostics.Append(configDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if configChanged {
+		tflog.Debug(ctx, fmt.Sprintf("Replacing postgres database config: %s", logID))
+		cfg, configDiags := r.applyPostgresConfigMerge(ctx, projectID, location, oldName, configBody, logID)
+		resp.Diagnostics.Append(configDiags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		configResult = cfg
+		dispatched = true
+	}
+
+	finalName := oldName
+	if postgresAttrChanged(plan.Name, state.Name) {
+		newName := plan.Name.ValueString()
+		tflog.Debug(ctx, fmt.Sprintf("Renaming postgres database: %s -> %s", logID, newName))
+		resp.Diagnostics.Append(r.applyPostgresRename(ctx, projectID, location, oldName, newName, logID)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		finalName = newName
+		dispatched = true
+	}
+
+	// No mutable change reached Update (e.g. a refresh that only recomputed invariant
+	// computeds): persist the planned state without a server round trip.
+	if !dispatched {
+		resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+		return
+	}
+
+	// Re-read under the final name so state reflects the server. Start from the plan so
+	// plan-owned fields the detailed GET does not return (pg_config, pgbouncer_config,
+	// storage_size) survive, then overlay the read surface.
+	postgresResp, err := r.uc.client.GetPostgresDatabaseDetailsWithResponse(ctx, projectID, location, finalName)
+	if err != nil {
+		r.persistRenamedNameOnError(ctx, oldName, finalName, resp)
+		resp.Diagnostics.AddError(
+			fmt.Sprintf("Error reading postgres database after update: %s", logID),
+			err.Error(),
+		)
+		return
+	}
+	if postgresResp.StatusCode() != http.StatusOK {
+		r.persistRenamedNameOnError(ctx, oldName, finalName, resp)
+		resp.Diagnostics.AddError(
+			"Unexpected HTTP status code reading postgres database after update",
+			fmt.Sprintf("Received %s for postgres database: %s. Details: %s", postgresResp.Status(), logID, postgresResp.Body))
+		return
+	}
+
+	model := plan
+	resp.Diagnostics.Append(setPostgresStateResource(ctx, postgresResp.JSON200, &model)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// The config PATCH returns the authoritative post-merge server config; overlay it so
+	// state mirrors the server exactly even when prior state was stale and the request
+	// therefore omitted a tombstone for a key the server still holds. model started from
+	// plan, so when config did not change the plan value (carried forward by
+	// UseStateForUnknown) already matches and configResult is nil (a no-op overlay).
+	resp.Diagnostics.Append(applyPostgresConfigToState(ctx, configResult, &model)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// size mirrors the actual vm_size in the read surface, which lags a requested resize
+	// until convergence. The planned size is known during apply and the framework requires
+	// the post-apply state to equal it, so keep the request here (target_vm_size carries
+	// the in-flight target); a later refresh resurfaces the actual vm_size as a benign
+	// pending diff until the resize converges.
+	if !plan.Size.IsUnknown() {
+		model.Size = plan.Size
+	}
+
+	// version, like size, mirrors the actual major in the read surface, which lags a
+	// requested upgrade until convergence. Hold the requested version (target_version
+	// carries the in-flight target) so the post-apply state equals the plan; a later refresh
+	// resurfaces the lagging actual as a benign pending diff until the upgrade converges.
+	if versionChanged && !plan.Version.IsUnknown() {
+		model.Version = plan.Version
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+}
+
+// persistRenamedNameOnError records the new name in state when the rename already
+// succeeded on the server but the follow-up read failed. Without it state keeps the OLD
+// name, a later refresh 404s on it, and Terraform plans a spurious recreate of a row that
+// actually exists under the new name.
+func (r *postgresResource) persistRenamedNameOnError(ctx context.Context, oldName, finalName string, resp *resource.UpdateResponse) {
+	if finalName == oldName {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), finalName)...)
 }
 
 func (r *postgresResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -193,6 +568,7 @@ func (r *postgresResource) ImportState(ctx context.Context, req resource.ImportS
 func setPostgresStateResource(ctx context.Context, postgresd *ubicloud_client.PostgresDatabase, state *resource_postgres.PostgresModel) diag.Diagnostics {
 	state.Id = types.StringValue(postgresd.Id)
 	state.Name = types.StringValue(postgresd.Name)
+	state.State = types.StringValue(postgresd.State)
 	state.Location = types.StringValue(postgresd.Location)
 	state.VmSize = types.StringValue(postgresd.VmSize)
 	state.Size = types.StringValue(postgresd.VmSize)
@@ -200,13 +576,44 @@ func setPostgresStateResource(ctx context.Context, postgresd *ubicloud_client.Po
 	state.Primary = types.BoolValue(postgresd.Primary)
 	state.HaType = types.StringValue(postgresd.HaType)
 	state.Version = types.StringValue(string(postgresd.Version))
+	state.ConnectionString = types.StringPointerValue(postgresd.ConnectionString)
+	state.EarliestRestoreTime = types.StringPointerValue(postgresd.EarliestRestoreTime)
+	state.LatestRestoreTime = types.StringValue(postgresd.LatestRestoreTime)
+	state.Flavor = types.StringValue(postgresd.Flavor)
+	state.TargetVmSize = types.StringPointerValue(postgresd.TargetVmSize)
+	state.TargetStorageSizeGib = int64PointerValue(postgresd.TargetStorageSizeGib)
+	state.TargetVersion = types.StringValue(string(postgresd.TargetVersion))
+	state.TargetServerCount = types.Int64Value(int64(postgresd.TargetServerCount))
+	state.MaintenanceWindowStartAt = int64PointerValue(postgresd.MaintenanceWindowStartAt)
+	state.ReadReplica = types.BoolValue(postgresd.ReadReplica)
+	// parent is a create-time reference the user supplies (name or id); the response
+	// returns the parent's canonical PATH, a different string. Fill it from the
+	// response only when the caller has not already set it, so a user-supplied parent
+	// round-trips without an inconsistent-result error or RequiresReplace churn (a
+	// normal pg stays null; an imported replica gets the response path).
+	if state.Parent.IsNull() || state.Parent.IsUnknown() {
+		state.Parent = types.StringPointerValue(postgresd.Parent)
+	}
+	state.FallbackActive = types.BoolValue(postgresd.FallbackActive)
+	state.CaCertificates = types.StringPointerValue(postgresd.CaCertificates)
+	state.CreatedAt = types.StringValue(postgresd.CreatedAt.Format(iso8601Layout))
+	state.Hostname = types.StringPointerValue(postgresd.Hostname)
+	state.Username = types.StringPointerValue(postgresd.Username)
+	state.Password = types.StringPointerValue(postgresd.Password)
 
 	firewallRulesListValue, diags := GetPostgresFirewallRulesState(ctx, postgresd.FirewallRules)
 	if diags.HasError() {
 		return diags
 	}
-
 	state.FirewallRules = firewallRulesListValue
+
+	tagsListValue, tagsDiags := GetPostgresTagsState(ctx, postgresd.Tags)
+	diags.Append(tagsDiags...)
+	if diags.HasError() {
+		return diags
+	}
+	state.Tags = tagsListValue
+
 	return diags
 }
 

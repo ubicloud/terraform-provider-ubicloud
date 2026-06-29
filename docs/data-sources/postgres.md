@@ -48,7 +48,7 @@ output "example_postgres" {
 ### Read-Only
 
 - `ca_certificates` (String) CA certificates of the root CA used to issue postgres server certificates
-- `connection_string` (String) Connection string to the Postgres database
+- `connection_string` (String, Sensitive) Connection string to the Postgres database
 - `created_at` (String) Creation timestamp of the Postgres database
 - `earliest_restore_time` (String) Earliest restore time (if primary)
 - `fallback_active` (Boolean) Whether the primary server is running on a fallback instance type
@@ -60,7 +60,7 @@ output "example_postgres" {
 - `latest_restore_time` (String) Latest restore time (if primary)"
 - `maintenance_window_start_at` (Number) Maintenance window start time
 - `parent` (String) Parent Postgres database
-- `password` (String) Password for the Postgres database
+- `password` (String, Sensitive) Password for the Postgres database
 - `primary` (Boolean) Is the database primary
 - `read_replica` (Boolean) If the database is a read replica or not
 - `state` (String) State of the Postgres database

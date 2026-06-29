@@ -28,15 +28,15 @@ resource "ubicloud_firewall_rule" "ssh" {
 ### Required
 
 - `cidr` (String) CIDR or private subnet id or name to allow
+- `location` (String) The Ubicloud location/region
+- `project_id` (String) ID of the project
 
 ### Optional
 
 - `description` (String) Description to use for the firewall rule
-- `firewall_id` (String)
-- `firewall_name` (String) Firewall ID or name
-- `location` (String) The Ubicloud location/region
+- `firewall_id` (String) ID of the parent firewall. Set either firewall_id or firewall_name. Write-only reference: it is not read back from the API, so changing it forces replacement.
+- `firewall_name` (String) Firewall ID or name. Write-only reference: it is not read back from the API, so changing it forces replacement.
 - `port_range` (String) Port range to allow
-- `project_id` (String) ID of the project
 - `protocol` (String) Protocol to allow (tcp or udp, default tcp)
 
 ### Read-Only

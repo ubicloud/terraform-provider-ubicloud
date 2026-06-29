@@ -84,6 +84,12 @@ func (r *vmResource) Create(ctx context.Context, req resource.CreateRequest, res
 	if state.PrivateSubnetId.ValueString() != "" {
 		body.PrivateSubnetId = state.PrivateSubnetId.ValueStringPointer()
 	}
+	if state.Gpu.ValueString() != "" {
+		body.Gpu = state.Gpu.ValueStringPointer()
+	}
+	if state.InitScript.ValueString() != "" {
+		body.InitScript = state.InitScript.ValueStringPointer()
+	}
 	if state.StorageSize.ValueInt64() != 0 {
 		storageSize := int(state.StorageSize.ValueInt64())
 		body.StorageSize = &storageSize
@@ -213,6 +219,7 @@ func setVmStateResource(ctx context.Context, vmd *ubicloud_client.Vm, state *res
 	state.PrivateIpv4 = types.StringValue(vmd.PrivateIpv4)
 	state.PrivateIpv6 = types.StringValue(vmd.PrivateIpv6)
 	state.Subnet = types.StringValue(vmd.Subnet)
+	state.Ip4Enabled = types.BoolValue(vmd.Ip4Enabled)
 
 	firewallsListValue, diags := GetFirewallsState(ctx, vmd.Firewalls)
 	if diags.HasError() {

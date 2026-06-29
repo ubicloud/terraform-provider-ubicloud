@@ -9,19 +9,20 @@ import (
 )
 
 func TestAccFirewallResource(t *testing.T) {
-	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			// Test Create and Read
-			{
-				Config: providerConfig +
-					fmt.Sprintf(`
+	resourceConfig := fmt.Sprintf(`
         resource "ubicloud_firewall" "testacc" {
           project_id  = "%s"
           location    = "%s"
           name        = "tf-testacc"
           description = "Terraform acceptance testing"
-        }`, GetTestAccProjectId(), GetTestAccLocation()),
+        }`, GetTestAccProjectId(), GetTestAccLocation())
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Test Create and Read
+			{
+				Config: providerConfig + resourceConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ubicloud_firewall.testacc", "id"),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "project_id", GetTestAccProjectId()),
@@ -29,7 +30,18 @@ func TestAccFirewallResource(t *testing.T) {
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "name", "tf-testacc"),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "description", "Terraform acceptance testing"),
 					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "firewall_rules.#", "0"),
+					// private_subnets is Computed; a firewall created through the API is
+					// attached to no subnet, so it must read back as a known empty list.
+					// Before the fix it stayed unknown and apply hard-failed.
+					resource.TestCheckResourceAttr("ubicloud_firewall.testacc", "private_subnets.#", "0"),
 				),
+			},
+			// No-op re-plan: the create-only RequiresReplace and stable-computed
+			// UseStateForUnknown plan modifiers must leave an unchanged config with an empty
+			// plan (no spurious replace, no churn).
+			{
+				Config:   providerConfig + resourceConfig,
+				PlanOnly: true,
 			},
 			// Test ImportState
 			{

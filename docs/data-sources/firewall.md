@@ -44,7 +44,7 @@ output "example_firewall" {
 - `description` (String) Description of the firewall
 - `firewall_rules` (Attributes List) List of firewall rules (see [below for nested schema](#nestedatt--firewall_rules))
 - `id` (String) ID of the firewall
-- `private_subnets` (List of String) List of private subnets
+- `private_subnets` (Attributes List) List of private subnets (see [below for nested schema](#nestedatt--private_subnets))
 
 <a id="nestedatt--firewall_rules"></a>
 ### Nested Schema for `firewall_rules`
@@ -56,3 +56,28 @@ Read-Only:
 - `id` (String) ID of the firewall rule
 - `port_range` (String) Port range of the firewall rule
 - `protocol` (String) Protocol of the firewall rule (tcp or udp)
+
+
+<a id="nestedatt--private_subnets"></a>
+### Nested Schema for `private_subnets`
+
+Read-Only:
+
+- `id` (String) ID of the subnet
+- `location` (String) Location of the subnet
+- `name` (String) Name of the subnet
+- `net4` (String) IPv4 CIDR of the subnet
+- `net6` (String) IPv6 CIDR of the subnet
+- `nics` (Attributes List) List of NICs (see [below for nested schema](#nestedatt--private_subnets--nics))
+- `state` (String) State of the subnet
+
+<a id="nestedatt--private_subnets--nics"></a>
+### Nested Schema for `private_subnets.nics`
+
+Read-Only:
+
+- `id` (String) ID of the NIC
+- `name` (String) Name of the NIC
+- `private_ipv4` (String) Private IPv4 address
+- `private_ipv6` (String) Private IPv6 address
+- `vm_name` (String) Name of the VM

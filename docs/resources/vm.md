@@ -85,8 +85,8 @@ output "example_vm" {
 
 - `boot_image` (String) Boot image of the VM
 - `enable_ip4` (Boolean) Enable IPv4
-- `gpu` (String) Requested GPU count and type, in the form of "count:type"
-- `init_script` (String) VM init script
+- `gpu` (String) Requested GPU count and type, in the form of "count:type". Write-only create input: it is not read back into state, so an imported vm shows gpu unset and setting gpu in config after import forces replacement; read the GPU configuration via the ubicloud_vm data source.
+- `init_script` (String) VM init script. Write-only create input: it is not read back into state, so an imported vm shows init_script unset and setting it in config after import forces replacement.
 - `private_subnet_id` (String) ID of the private subnet
 - `size` (String) Size of the VM
 - `storage_size` (Number) Requested storage size in GiB

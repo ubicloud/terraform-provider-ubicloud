@@ -37,6 +37,16 @@ func TestAccVmResource(t *testing.T) {
 					resource.TestCheckResourceAttrSet("ubicloud_vm.testacc", "unix_user"),
 				),
 			},
+			// No-op: re-planning the identical config must be an EMPTY plan. The vm resource has
+			// no in-place Update, so this proves the plan modifiers behave: UseStateForUnknown pins
+			// the stable read-back computeds (id, ips, subnet, storage_size_gib, firewalls, size,
+			// unix_user) so they do not churn as "(known after apply)", and every create-only
+			// immutable compares equal so RequiresReplace fires no spurious replace. A non-empty
+			// plan here fails the step.
+			{
+				Config:   providerConfig + resourceConfig,
+				PlanOnly: true,
+			},
 			// Test ImportState
 			{
 				ResourceName: "ubicloud_vm.testacc",

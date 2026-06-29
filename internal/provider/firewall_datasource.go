@@ -80,20 +80,88 @@ func (d *firewallDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	state.Id = types.StringValue(firewallResp.JSON200.Id)
-	state.Name = types.StringValue(firewallResp.JSON200.Name)
-	state.Description = types.StringValue(firewallResp.JSON200.Description)
-	state.Location = types.StringValue(firewallResp.JSON200.Location)
-
-	firewallRulesListValue, fwRulesDiags := GetFirewallRulesState(ctx, firewallResp.JSON200.FirewallRules)
-	resp.Diagnostics.Append(fwRulesDiags...)
+	resp.Diagnostics.Append(setFirewallStateDatasource(ctx, firewallResp.JSON200, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// setFirewallStateDatasource maps a detailed firewall response onto the data source
+// model, including the previously unmapped computed private_subnets list.
+func setFirewallStateDatasource(ctx context.Context, fw *ubicloud_client.FirewallDetailed, state *datasource_firewall.FirewallModel) diag.Diagnostics {
+	state.Id = types.StringValue(fw.Id)
+	state.Name = types.StringValue(fw.Name)
+	state.Location = types.StringValue(fw.Location)
+	state.Description = types.StringValue(fw.Description)
+
+	firewallRulesListValue, diags := GetFirewallRulesState(ctx, fw.FirewallRules)
+	if diags.HasError() {
+		return diags
+	}
 	state.FirewallRules = firewallRulesListValue
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	privateSubnetsListValue, psDiags := GetPrivateSubnetsState(ctx, fw.PrivateSubnets)
+	diags.Append(psDiags...)
+	if diags.HasError() {
+		return diags
+	}
+	state.PrivateSubnets = privateSubnetsListValue
+
+	return diags
+}
+
+// GetPrivateSubnetsState maps the detailed firewall response's private_subnets onto the
+// generated nested objects. The backend serializes each attached subnet as a full
+// PrivateSubnet (id, name, state, location, net4, net6, nics, and a recursive firewalls
+// list). The recursive firewalls list is dropped from the schema (ubi fw show omits it
+// too), so this mirrors the ubi CLI private-subnet field set: id, name, state, location,
+// net4, net6, nics.
+func GetPrivateSubnetsState(ctx context.Context, privateSubnets []ubicloud_client.PrivateSubnet) (basetypes.ListValue, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	privateSubnetsValue := datasource_firewall.PrivateSubnetsValue{}
+	privateSubnetsValues := make([]datasource_firewall.PrivateSubnetsValue, 0, len(privateSubnets))
+	for _, ps := range privateSubnets {
+		nicsValue := datasource_firewall.NicsValue{}
+		nicsValues := make([]datasource_firewall.NicsValue, 0, len(ps.Nics))
+		for _, n := range ps.Nics {
+			nv := datasource_firewall.NewNicsValueMust(nicsValue.AttributeTypes(ctx), map[string]attr.Value{
+				"id":           types.StringValue(n.Id),
+				"name":         types.StringValue(n.Name),
+				"private_ipv4": types.StringValue(n.PrivateIpv4),
+				"private_ipv6": types.StringValue(n.PrivateIpv6),
+				"vm_name":      types.StringPointerValue(n.VmName),
+			})
+			nicsValues = append(nicsValues, nv)
+		}
+
+		nicsListValue, nicsDiag := types.ListValueFrom(ctx, nicsValue.Type(ctx), nicsValues)
+		diags.Append(nicsDiag...)
+		if diags.HasError() {
+			return basetypes.NewListUnknown(privateSubnetsValue.Type(ctx)), diags
+		}
+
+		psv := datasource_firewall.NewPrivateSubnetsValueMust(privateSubnetsValue.AttributeTypes(ctx), map[string]attr.Value{
+			"id":       types.StringValue(ps.Id),
+			"location": types.StringValue(ps.Location),
+			"name":     types.StringValue(ps.Name),
+			"net4":     types.StringValue(ps.Net4),
+			"net6":     types.StringValue(ps.Net6),
+			"nics":     nicsListValue,
+			"state":    types.StringValue(ps.State),
+		})
+		privateSubnetsValues = append(privateSubnetsValues, psv)
+	}
+
+	privateSubnetsListValue, listDiag := types.ListValueFrom(ctx, privateSubnetsValue.Type(ctx), privateSubnetsValues)
+	diags.Append(listDiag...)
+	if diags.HasError() {
+		return basetypes.NewListUnknown(privateSubnetsValue.Type(ctx)), diags
+	}
+
+	return privateSubnetsListValue, diags
 }
 
 func GetFirewallsState(ctx context.Context, firewalls []ubicloud_client.Firewall) (basetypes.ListValue, diag.Diagnostics) {

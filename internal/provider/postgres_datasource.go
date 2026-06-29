@@ -103,13 +103,34 @@ func setPostgresStateDatasource(ctx context.Context, postgresd *ubicloud_client.
 	state.ConnectionString = types.StringPointerValue(postgresd.ConnectionString)
 	state.EarliestRestoreTime = types.StringPointerValue(postgresd.EarliestRestoreTime)
 	state.LatestRestoreTime = types.StringValue(postgresd.LatestRestoreTime)
+	state.Flavor = types.StringValue(postgresd.Flavor)
+	state.TargetVmSize = types.StringPointerValue(postgresd.TargetVmSize)
+	state.TargetStorageSizeGib = int64PointerValue(postgresd.TargetStorageSizeGib)
+	state.TargetVersion = types.StringValue(string(postgresd.TargetVersion))
+	state.TargetServerCount = types.Int64Value(int64(postgresd.TargetServerCount))
+	state.MaintenanceWindowStartAt = int64PointerValue(postgresd.MaintenanceWindowStartAt)
+	state.ReadReplica = types.BoolValue(postgresd.ReadReplica)
+	state.Parent = types.StringPointerValue(postgresd.Parent)
+	state.FallbackActive = types.BoolValue(postgresd.FallbackActive)
+	state.CaCertificates = types.StringPointerValue(postgresd.CaCertificates)
+	state.CreatedAt = types.StringValue(postgresd.CreatedAt.Format(iso8601Layout))
+	state.Hostname = types.StringPointerValue(postgresd.Hostname)
+	state.Username = types.StringPointerValue(postgresd.Username)
+	state.Password = types.StringPointerValue(postgresd.Password)
 
 	firewallRulesListValue, diags := GetPostgresFirewallRulesState(ctx, postgresd.FirewallRules)
 	if diags.HasError() {
 		return diags
 	}
-
 	state.FirewallRules = firewallRulesListValue
+
+	tagsListValue, tagsDiags := GetPostgresTagsState(ctx, postgresd.Tags)
+	diags.Append(tagsDiags...)
+	if diags.HasError() {
+		return diags
+	}
+	state.Tags = tagsListValue
+
 	return diags
 }
 
@@ -135,6 +156,28 @@ func GetPostgresFirewallRulesState(ctx context.Context, firewallRules []ubicloud
 	}
 
 	return firewallRulesListValue, diags
+}
+
+func GetPostgresTagsState(ctx context.Context, tags []ubicloud_client.PostgresTag) (basetypes.ListValue, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	tagsValue := datasource_postgres.TagsValue{}
+	tagsValues := make([]datasource_postgres.TagsValue, 0, len(tags))
+	for _, t := range tags {
+		tv := datasource_postgres.NewTagsValueMust(tagsValue.AttributeTypes(ctx), map[string]attr.Value{
+			"key":   types.StringValue(t.Key),
+			"value": types.StringValue(t.Value),
+		})
+		tagsValues = append(tagsValues, tv)
+	}
+
+	tagsListValue, diag := types.ListValueFrom(ctx, tagsValue.Type(ctx), tagsValues)
+	diags.Append(diag...)
+	if diags.HasError() {
+		return basetypes.NewListUnknown(tagsValue.Type(ctx)), diags
+	}
+
+	return tagsListValue, diags
 }
 
 func postgresDataSourceLogIdentifier(state *datasource_postgres.PostgresModel) string {

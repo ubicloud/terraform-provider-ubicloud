@@ -5,6 +5,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
+const iso8601Layout = "2006-01-02T15:04:05-07:00"
+
 func int64PointerValue(source *int) basetypes.Int64Value {
 	if source == nil {
 		return types.Int64Null()
