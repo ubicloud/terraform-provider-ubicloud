@@ -76,8 +76,8 @@ output "example_vm" {
 
 ### Required
 
-- `location` (String) The Ubicloud location/region
-- `name` (String) Virtual machine ID or name
+- `location` (String) Location of the VM
+- `name` (String) Name of the VM
 - `project_id` (String) ID of the project
 - `public_key` (String) Public SSH key for the VM, or name of registered SSH public key
 

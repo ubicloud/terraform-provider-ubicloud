@@ -42,7 +42,7 @@ output "example_postgres" {
 ### Required
 
 - `location` (String) The Ubicloud location/region
-- `name` (String) Postgres database name
+- `name` (String) Postgres database ID or name
 - `project_id` (String) ID of the project
 
 ### Read-Only
@@ -56,7 +56,7 @@ output "example_postgres" {
 - `primary` (Boolean) Is the database primary
 - `state` (String) State of the Postgres database
 - `storage_size_gib` (Number) Storage size in GiB
-- `version` (String) Requested Postgres version
+- `version` (String) Current Postgres version
 - `vm_size` (String) Size of the underlying VM
 
 <a id="nestedatt--firewall_rules"></a>
@@ -64,5 +64,5 @@ output "example_postgres" {
 
 Read-Only:
 
-- `cidr` (String) CIDR of the Postgres firewall rule
-- `id` (String) ID of the Postgres firewall rule
+- `cidr` (String) CIDR of the firewall rule
+- `id` (String) ID of the firewall rule

@@ -9,6 +9,10 @@ data_sources:
       attributes:
         aliases:
           firewall_reference: name
+      ignores:
+        - private_subnets
+        - firewall_rules.protocol
+        - firewall_rules.description
   firewall_rule:
     read:
       path: /project/{project_id}/location/{location}/firewall/{firewall_reference}/firewall-rule/{firewall_rule_id}
@@ -41,6 +45,12 @@ data_sources:
       attributes:
         aliases:
           vm_reference: name
+      ignores:
+        - boot_image
+        - ip4_enabled
+        - gpu
+        - firewalls.firewall_rules.protocol
+        - firewalls.firewall_rules.description
   postgres:
     read:
       path: /project/{project_id}/location/{location}/postgres/{postgres_database_reference}
@@ -49,7 +59,24 @@ data_sources:
       attributes:
         aliases:
           postgres_database_reference: name
-          vm_size: size
+      ignores:
+        - flavor
+        - target_server_count
+        - target_storage_size_gib
+        - target_version
+        - target_vm_size
+        - ca_certificates
+        - maintenance_window_start_at
+        - read_replica
+        - parent
+        - fallback_active
+        - tags
+        - created_at
+        - username
+        - password
+        - hostname
+        - firewall_rules.description
+        - firewall_rules.port
 resources:
   firewall:
     create:
@@ -62,6 +89,8 @@ resources:
       attributes:
         aliases:
           firewall_reference: name
+      ignores:
+        - private_subnets
   firewall_rule:
     create:
       path: /project/{project_id}/location/{location}/firewall/{firewall_reference}/firewall-rule
@@ -89,6 +118,13 @@ resources:
         - ip6
         - state
         - storage_size_gb
+        - firewalls
+        - id
+        - ip4_enabled
+        - private_ipv4
+        - private_ipv6
+        - storage_size_gib
+        - subnet
   postgres:
     create:
       path: /project/{project_id}/location/{location}/postgres/{postgres_database_reference}
@@ -106,6 +142,24 @@ resources:
         - earliest_restore_time
         - latest_restore_time
         - state
+        - ca_certificates
+        - created_at
+        - fallback_active
+        - firewall_rules
+        - hostname
+        - id
+        - maintenance_window_start_at
+        - parent
+        - password
+        - primary
+        - read_replica
+        - storage_size_gib
+        - target_server_count
+        - target_storage_size_gib
+        - target_version
+        - target_vm_size
+        - username
+        - vm_size
   private_subnet:
     create:
       path: /project/{project_id}/location/{location}/private-subnet/{private_subnet_reference}
