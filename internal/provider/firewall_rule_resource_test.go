@@ -21,7 +21,7 @@ func TestAccFirewallRuleResource(t *testing.T) {
     resource "ubicloud_firewall_rule" "testaccfwr1" {
       project_id  = ubicloud_firewall.testacc.project_id
       location    = ubicloud_firewall.testacc.location
-      firewall_id = ubicloud_firewall.testacc.id
+      firewall_reference = ubicloud_firewall.testacc.id
       cidr        = "0.0.0.0/0"
       port_range  = "22..22"
     }			
@@ -47,7 +47,7 @@ func TestAccFirewallRuleResource(t *testing.T) {
 
 					resource.TestCheckResourceAttrSet("ubicloud_firewall_rule.testaccfwr1", "id"),
 					resource.TestCheckResourceAttr("ubicloud_firewall_rule.testaccfwr1", "project_id", GetTestAccProjectId()),
-					resource.TestCheckResourceAttrSet("ubicloud_firewall_rule.testaccfwr1", "firewall_id"),
+					resource.TestCheckResourceAttrSet("ubicloud_firewall_rule.testaccfwr1", "firewall_reference"),
 					resource.TestCheckResourceAttr("ubicloud_firewall_rule.testaccfwr1", "cidr", "0.0.0.0/0"),
 					resource.TestCheckResourceAttr("ubicloud_firewall_rule.testaccfwr1", "port_range", "22..22"),
 				),
@@ -75,6 +75,6 @@ func importStateIdFunc(fwr string) resource.ImportStateIdFunc {
 		if rs.Primary.ID == "" {
 			return "", fmt.Errorf("No Record ID is set")
 		}
-		return fmt.Sprintf("%s,%s,%s,%s", GetTestAccProjectId(), rs.Primary.Attributes["location"], rs.Primary.Attributes["firewall_id"], rs.Primary.ID), nil
+		return fmt.Sprintf("%s,%s,%s,%s", GetTestAccProjectId(), rs.Primary.Attributes["location"], rs.Primary.Attributes["firewall_reference"], rs.Primary.ID), nil
 	}
 }

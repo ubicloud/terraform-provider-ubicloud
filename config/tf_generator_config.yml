@@ -102,6 +102,8 @@ resources:
       attributes:
         aliases:
           firewall_rule_id: id
+      ignores:
+        - firewall_id
   vm:
     create:
       path: /project/{project_id}/location/{location}/vm/{vm_reference}
