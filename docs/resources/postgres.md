@@ -39,8 +39,8 @@ resource "ubicloud_postgres" "example" {
 
 ### Required
 
-- `location` (String) The Ubicloud location/region
-- `name` (String) Postgres database ID or name
+- `location` (String) Location of the Postgres database
+- `name` (String) Name of the Postgres database
 - `project_id` (String) ID of the project
 - `size` (String) Requested size for the underlying VM
 

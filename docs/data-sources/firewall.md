@@ -36,7 +36,7 @@ output "example_firewall" {
 ### Required
 
 - `location` (String) The Ubicloud location/region
-- `name` (String) Name of the firewall
+- `name` (String) Firewall ID or name
 - `project_id` (String) ID of the project
 
 ### Read-Only

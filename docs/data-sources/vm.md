@@ -42,7 +42,7 @@ output "example_vm" {
 ### Required
 
 - `location` (String) The Ubicloud location/region
-- `name` (String) Virtual machine name
+- `name` (String) Virtual machine ID or name
 - `project_id` (String) ID of the project
 
 ### Read-Only
@@ -67,7 +67,7 @@ Read-Only:
 - `description` (String) Description of the firewall
 - `firewall_rules` (Attributes List) List of firewall rules (see [below for nested schema](#nestedatt--firewalls--firewall_rules))
 - `id` (String) ID of the firewall
-- `location` (String) Location of the firewall
+- `location` (String) Location of the the firewall
 - `name` (String) Name of the firewall
 
 <a id="nestedatt--firewalls--firewall_rules"></a>
