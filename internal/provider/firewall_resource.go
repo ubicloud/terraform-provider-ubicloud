@@ -127,6 +127,14 @@ func (r *firewallResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
+	if firewallResp.StatusCode() == http.StatusNotFound {
+		// 404 means the firewall is gone server-side; drop it from state so the next plan
+		// converges (recreate or no-op) instead of erroring on drift.
+		tflog.Debug(ctx, fmt.Sprintf("Firewall not found, removing from state: %s", firewallResourceLogIdentifier(&state)))
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	if firewallResp.StatusCode() != http.StatusOK {
 		resp.Diagnostics.AddError(
 			"Unexpected HTTP status code reading firewall",

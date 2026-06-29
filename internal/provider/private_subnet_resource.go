@@ -115,6 +115,14 @@ func (r *privateSubnetResource) Read(ctx context.Context, req resource.ReadReque
 		return
 	}
 
+	if privateSubnetResp.StatusCode() == http.StatusNotFound {
+		// 404 means the private subnet is gone server-side; drop it from state so the next
+		// plan converges (recreate or no-op) instead of erroring on drift.
+		tflog.Debug(ctx, fmt.Sprintf("Private subnet not found, removing from state: %s", privateSubnetResourceLogIdentifier(&state)))
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	if privateSubnetResp.StatusCode() != http.StatusOK {
 		resp.Diagnostics.AddError(
 			"Unexpected HTTP status code reading private subnet",

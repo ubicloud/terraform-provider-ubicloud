@@ -139,6 +139,14 @@ func (r *vmResource) Read(ctx context.Context, req resource.ReadRequest, resp *r
 		return
 	}
 
+	if vmResp.StatusCode() == http.StatusNotFound {
+		// 404 means the vm is gone server-side; drop it from state so the next plan
+		// converges (recreate or no-op) instead of erroring on drift.
+		tflog.Debug(ctx, fmt.Sprintf("Vm not found, removing from state: %s", vmResourceLogIdentifier(&state)))
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	if vmResp.StatusCode() != http.StatusOK {
 		resp.Diagnostics.AddError(
 			"Unexpected HTTP status code reading vm",

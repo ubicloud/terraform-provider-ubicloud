@@ -108,6 +108,14 @@ func (r *projectResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
+	if projectResp.StatusCode() == http.StatusNotFound {
+		// 404 means the project is gone server-side; drop it from state so the next plan
+		// converges (recreate or no-op) instead of erroring on drift.
+		tflog.Debug(ctx, fmt.Sprintf("Project not found, removing from state: project_id=%s", state.Id.ValueString()))
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	if projectResp.StatusCode() != http.StatusOK {
 		resp.Diagnostics.AddError(
 			"Unexpected HTTP status code reading project",
