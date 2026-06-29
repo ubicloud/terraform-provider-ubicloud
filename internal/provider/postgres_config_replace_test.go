@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"math/big"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/resource_postgres"
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/ubicloud_client"
@@ -280,6 +283,7 @@ func TestUpdateConfigStateMirrorsServerNotPlan(t *testing.T) {
 func TestCreateBodyIncludesConfig(t *testing.T) {
 	ctx := t.Context()
 	r, capRT := newCapturingPostgresResource(t)
+	capRT.detailState = "running" // Create blocks until the detail GET reports running
 	resp := driveCreate(t, ctx, r, map[string]tftypes.Value{
 		"size":             strRaw("m8gd.large"),
 		"storage_size":     numRaw(64),
@@ -308,5 +312,252 @@ func TestCreateBodyIncludesConfig(t *testing.T) {
 	pgb, ok := b["pgbouncer_config"].(map[string]any)
 	if !ok || pgb["pool_mode"] != "transaction" {
 		t.Errorf("create body pgbouncer_config = %v, want {pool_mode:transaction}: %s", b["pgbouncer_config"], create.Body)
+	}
+}
+
+// withShortCreateTimeout lowers the default create timeout for one test (restored on cleanup),
+// so a test can exercise the create deadline without a 60m wait or plumbing a timeouts block
+// (the timeouts custom type exposes no settable attributes through the generated test schema).
+func withShortCreateTimeout(t *testing.T, d time.Duration) {
+	t.Helper()
+	prev := postgresCreateTimeoutDefault
+	postgresCreateTimeoutDefault = d
+	t.Cleanup(func() { postgresCreateTimeoutDefault = prev })
+}
+
+// withFastAdoptBudget shrinks the post-dispatch-timeout adopt lookup budget for one test, so a
+// test can exercise the bounded adopt retry (and its give-up path) without a 30s wait.
+func withFastAdoptBudget(t *testing.T, d time.Duration) {
+	t.Helper()
+	prev := postgresAdoptLookupBudget
+	postgresAdoptLookupBudget = d
+	t.Cleanup(func() { postgresAdoptLookupBudget = prev })
+}
+
+// Create must bound the WHOLE operation by timeouts.create, not just the poll loop: a stuck
+// create POST is cancelled at the deadline rather than hanging on the provider-wide context
+// (Codex HIGH). With a 100ms create timeout and a create endpoint that never responds, Create
+// returns an error within the budget; without the operation-scoped context it hangs and the
+// 3s watchdog fires. The request is built on the test goroutine (mkPGRaw may t.Fatal); only
+// r.Create runs in the goroutine, which performs no t.* calls.
+func TestCreateBoundsStuckPostByCreateTimeout(t *testing.T) {
+	ctx := context.Background()
+	withFastPoll(t)
+	withShortCreateTimeout(t, 100*time.Millisecond)
+	withFastAdoptBudget(t, 200*time.Millisecond)
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			<-release // the create POST never responds
+			return
+		}
+		// After the POST times out, Create makes a bounded adopt lookup; model a server that never
+		// accepted the create (404 on every attempt) so the lookup finds nothing across its budget
+		// and state stays empty (a clean recreate next apply).
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"code":404,"message":"not found"}}`))
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	r := newTestPostgresResource(t, srv)
+	schema := resource_postgres.PostgresResourceSchema(ctx)
+	planRaw := mkPGRaw(t, ctx, map[string]tftypes.Value{
+		"size":         strRaw("m8gd.large"),
+		"storage_size": numRaw(64),
+	})
+	req := resource.CreateRequest{Plan: tfsdk.Plan{Schema: schema, Raw: planRaw}}
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: planRaw}}
+
+	done := make(chan struct{})
+	go func() {
+		r.Create(ctx, req, resp)
+		close(done)
+	}()
+	select {
+	case <-done:
+		if !resp.Diagnostics.HasError() {
+			t.Fatal("expected a bounded create error from a stuck POST, got success")
+		}
+		if got := resp.Diagnostics.Errors()[0].Summary(); !strings.Contains(got, "Timeout while creating") {
+			t.Fatalf("first-request timeout must be classified as a create timeout, got %q", got)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Create ignored its 100ms create timeout on a stuck POST (it hung)")
+	}
+}
+
+// A create POST that times out client-side does not prove the server skipped the create: if the
+// backend accepted it but the response was lost, returning empty state orphans the database into
+// a name conflict on the next apply (Codex HIGH). Create must make a best-effort lookup and adopt
+// an already-created database into state (tracked, replaced next apply) instead. Here the POST
+// hangs past the 100ms create timeout while the detail GET reports the database exists; Create
+// must return the create timeout AND persist the adopted server state.
+func TestCreateAdoptsCreatedPostgresOnStuckPostTimeout(t *testing.T) {
+	ctx := context.Background()
+	withFastPoll(t) // also shortens the adopt lookup's one-poll-interval bound
+	withShortCreateTimeout(t, 100*time.Millisecond)
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			<-release // the create POST never responds; the deadline must surface as a timeout
+			return
+		}
+		// The best-effort adopt lookup: the server DID accept the create (db exists, still creating).
+		pg := sampleDetailedPostgresResponse()
+		pg.State = "creating"
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(pg)
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	r := newTestPostgresResource(t, srv)
+	schema := resource_postgres.PostgresResourceSchema(ctx)
+	planRaw := mkPGRaw(t, ctx, map[string]tftypes.Value{
+		"size":         strRaw("m8gd.large"),
+		"storage_size": numRaw(64),
+	})
+	req := resource.CreateRequest{Plan: tfsdk.Plan{Schema: schema, Raw: planRaw}}
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: planRaw}}
+
+	done := make(chan struct{})
+	go func() {
+		r.Create(ctx, req, resp)
+		close(done)
+	}()
+	select {
+	case <-done:
+		if !resp.Diagnostics.HasError() {
+			t.Fatal("expected a bounded create timeout, got success")
+		}
+		if got := resp.Diagnostics.Errors()[0].Summary(); !strings.Contains(got, "Timeout while creating") {
+			t.Fatalf("expected a create timeout, got %q", got)
+		}
+		var saved resource_postgres.PostgresModel
+		if d := resp.State.Get(ctx, &saved); d.HasError() {
+			t.Fatalf("reading persisted state: %v", d)
+		}
+		if got := saved.Id.ValueString(); got != "pgn30gjk1d1e2jj34v9x0dq4rp" {
+			t.Fatalf("timed-out create did not adopt the already-created database (state id=%q): it is orphaned", got)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Create hung instead of bounding the stuck POST and adopting the created database")
+	}
+}
+
+// The adopt lookup must be a BOUNDED RETRY, not a one-shot GET (Codex MEDIUM): a single transient
+// failure (a 5xx, a network blip) or a brief post-accept visibility lag would otherwise abandon a
+// real, already-created database and orphan it into a next-apply name conflict. Here the create
+// POST hangs past the create timeout, the first adopt GET returns 503, and the retry sees the
+// created database; Create must still adopt it (state carries the server id).
+func TestCreateAdoptsCreatedPostgresAfterTransientLookupFailure(t *testing.T) {
+	ctx := context.Background()
+	withFastPoll(t)
+	withShortCreateTimeout(t, 100*time.Millisecond)
+	withFastAdoptBudget(t, 2*time.Second)
+	release := make(chan struct{})
+	var getCalls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			<-release // the create POST never responds; the deadline must surface as a timeout
+			return
+		}
+		// First adopt lookup fails transiently; the retry must see the already-created database.
+		if atomic.AddInt32(&getCalls, 1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"code":503,"message":"try again"}}`))
+			return
+		}
+		pg := sampleDetailedPostgresResponse()
+		pg.State = "creating"
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(pg)
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	r := newTestPostgresResource(t, srv)
+	schema := resource_postgres.PostgresResourceSchema(ctx)
+	planRaw := mkPGRaw(t, ctx, map[string]tftypes.Value{
+		"size":         strRaw("m8gd.large"),
+		"storage_size": numRaw(64),
+	})
+	req := resource.CreateRequest{Plan: tfsdk.Plan{Schema: schema, Raw: planRaw}}
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: planRaw}}
+
+	done := make(chan struct{})
+	go func() {
+		r.Create(ctx, req, resp)
+		close(done)
+	}()
+	select {
+	case <-done:
+		if !resp.Diagnostics.HasError() {
+			t.Fatal("expected a bounded create timeout, got success")
+		}
+		var saved resource_postgres.PostgresModel
+		if d := resp.State.Get(ctx, &saved); d.HasError() {
+			t.Fatalf("reading persisted state: %v", d)
+		}
+		if got := saved.Id.ValueString(); got != "pgn30gjk1d1e2jj34v9x0dq4rp" {
+			t.Fatalf("adopt gave up after a transient lookup failure (state id=%q): created db orphaned", got)
+		}
+		if got := atomic.LoadInt32(&getCalls); got < 2 {
+			t.Fatalf("adopt must retry past the transient failure, but made only %d GET(s)", got)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Create hung instead of bounding the stuck POST and adopting after a transient lookup failure")
+	}
+}
+
+// hydratePostgresConfig is best-effort and swallows transport errors, so a deadline that lands
+// on the final /config read-back must still surface as a create timeout, not silent success
+// (Codex MEDIUM). The database reaches running, then the config GET hangs past the 150ms create
+// timeout; Create must return a "Timeout while creating" error, not success.
+func TestCreateBoundsStuckConfigHydrationByCreateTimeout(t *testing.T) {
+	ctx := context.Background()
+	withFastPoll(t)
+	withShortCreateTimeout(t, 150*time.Millisecond)
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/config") {
+			<-release // config hydration never responds; the deadline must surface as a timeout
+			return
+		}
+		pg := sampleDetailedPostgresResponse() // create POST + readiness GET both report running
+		pg.State = "running"
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(pg)
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	r := newTestPostgresResource(t, srv)
+	schema := resource_postgres.PostgresResourceSchema(ctx)
+	planRaw := mkPGRaw(t, ctx, map[string]tftypes.Value{
+		"size":         strRaw("m8gd.large"),
+		"storage_size": numRaw(64),
+	})
+	req := resource.CreateRequest{Plan: tfsdk.Plan{Schema: schema, Raw: planRaw}}
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: planRaw}}
+
+	done := make(chan struct{})
+	go func() {
+		r.Create(ctx, req, resp)
+		close(done)
+	}()
+	select {
+	case <-done:
+		if !resp.Diagnostics.HasError() {
+			t.Fatal("expected a create timeout when config hydration hangs past the deadline, got success")
+		}
+		if got := resp.Diagnostics.Errors()[0].Summary(); !strings.Contains(got, "Timeout while creating") {
+			t.Fatalf("a swallowed hydration deadline must surface as a create timeout, got %q", got)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Create ignored its create timeout on a stuck config hydration (it hung)")
 	}
 }

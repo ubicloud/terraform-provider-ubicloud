@@ -24,7 +24,7 @@ func rawUnknownConfigMap() tftypes.Value {
 // non-empty server config also proves the value comes from the read-back, not a blind reset.
 func TestCreateHydratesOmittedConfig(t *testing.T) {
 	ctx := t.Context()
-	capRT := &captureRT{configBody: &ubicloud_client.PostgresConfig{
+	capRT := &captureRT{detailState: "running", configBody: &ubicloud_client.PostgresConfig{
 		PgConfig:        map[string]string{"max_connections": "100"},
 		PgbouncerConfig: map[string]string{},
 	}}
@@ -79,7 +79,7 @@ func TestCreateHydratesOmittedConfig(t *testing.T) {
 // map to empty (the server's user_config when nothing was sent), so the apply always converges.
 func TestCreateConfigFallbackOnSkippedHydration(t *testing.T) {
 	ctx := t.Context()
-	capRT := &captureRT{configStatus: http.StatusInternalServerError}
+	capRT := &captureRT{detailState: "running", configStatus: http.StatusInternalServerError}
 	r := newPostgresResourceWithRT(t, capRT)
 
 	resp := driveCreate(t, ctx, r, map[string]tftypes.Value{
@@ -135,6 +135,7 @@ func TestPostgresWriteOnlyInputsAreOptionalOnly(t *testing.T) {
 func TestCreateBodyIncludesWriteOnlyInputs(t *testing.T) {
 	ctx := t.Context()
 	r, capRT := newCapturingPostgresResource(t)
+	capRT.detailState = "running" // Create blocks until the detail GET reports running
 	resp := driveCreate(t, ctx, r, map[string]tftypes.Value{
 		"size":                strRaw("m8gd.large"),
 		"storage_size":        numRaw(128),

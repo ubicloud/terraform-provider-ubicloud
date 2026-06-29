@@ -11,7 +11,8 @@ package main
 //go:generate sh -c "jq -f config/inject_resource_reads.jq config/generated/provider_code_spec_mod.tmp5.json > config/generated/provider_code_spec_mod.tmp6.json"
 //go:generate sh -c "jq -f config/inject_restore_target.jq config/generated/provider_code_spec_mod.tmp6.json > config/generated/provider_code_spec_mod.tmp6b.json"
 //go:generate sh -c "jq -f config/plan_modifiers.jq config/generated/provider_code_spec_mod.tmp6b.json > config/generated/provider_code_spec_mod.tmp7.json"
-//go:generate sh -c "jq -f config/custom_types.jq config/generated/provider_code_spec_mod.tmp7.json > config/generated/provider_code_spec_mod.json"
+//go:generate sh -c "jq -f config/custom_types.jq config/generated/provider_code_spec_mod.tmp7.json > config/generated/provider_code_spec_mod.tmp8.json"
+//go:generate sh -c "jq -f config/inject_timeouts.jq config/generated/provider_code_spec_mod.tmp8.json > config/generated/provider_code_spec_mod.json"
 
 //go:generate go run github.com/hashicorp/terraform-plugin-codegen-framework/cmd/tfplugingen-framework generate data-sources --input config/generated/provider_code_spec_mod.json  --output internal/generated
 //go:generate go run github.com/hashicorp/terraform-plugin-codegen-framework/cmd/tfplugingen-framework generate resources --input config/generated/provider_code_spec_mod.json  --output internal/generated

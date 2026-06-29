@@ -45,6 +45,11 @@ type captureRT struct {
 	// default sample, so a test controls exactly what the read surface reports (e.g. a
 	// version that still lags target_version mid-upgrade).
 	detailBody *ubicloud_client.PostgresDatabase
+	// detailState, when non-empty, overrides the state of the default sampled detail response.
+	// Create blocks until the detail GET reports running, so create-driving tests set this to
+	// "running"; leaving it empty keeps the sample's creating state, which lets update tests
+	// keep exercising the update-against-creating path.
+	detailState string
 	// upgradeStatus, when non-empty, is the upgrade_status the /upgrade endpoint reports
 	// (default "running"); a test sets "failed" to exercise the failed-upgrade surfacing.
 	upgradeStatus string
@@ -106,7 +111,15 @@ func (c *captureRT) RoundTrip(req *http.Request) (*http.Response, error) {
 		case c.detailBody != nil:
 			respBody, _ = json.Marshal(*c.detailBody)
 		default:
-			respBody, _ = json.Marshal(sampleDetailedPostgresResponse())
+			// The detail/readiness GET echoes the sample, which stays at creating. Create blocks
+			// until it reports running, so create-driving tests set detailState:"running"; update
+			// tests keep the creating default, preserving update-against-creating coverage. Tests
+			// needing a specific surface (e.g. a lagging target) set detailBody explicitly.
+			sample := sampleDetailedPostgresResponse()
+			if c.detailState != "" {
+				sample.State = c.detailState
+			}
+			respBody, _ = json.Marshal(sample)
 		}
 	}
 	return &http.Response{

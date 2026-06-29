@@ -5,16 +5,36 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/resource_postgres"
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/ubicloud_client"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+)
+
+// Wait-for-ready tuning. Create blocks until the database reports state=running so apply
+// completes only when the resource is usable; Delete blocks until the row is gone. Both are
+// bounded by the user-configurable timeouts block and default generously, since cloud-backed
+// provisioning and async teardown each run over many respirate hops.
+const postgresStateRunning = "running"
+
+// These are vars, not consts, so tests can shorten them; production never reassigns them.
+// postgresPollInterval is the wait-for-ready poll cadence; the timeout defaults apply when the
+// timeouts block omits the corresponding duration. postgresAdoptLookupBudget bounds the recovery
+// lookup that adopts an already-created database after a dispatch timeout (see
+// adoptCreatedPostgresOnTimeout).
+var (
+	postgresCreateTimeoutDefault = 60 * time.Minute
+	postgresDeleteTimeoutDefault = 60 * time.Minute
+	postgresPollInterval         = 10 * time.Second
+	postgresAdoptLookupBudget    = 30 * time.Second
 )
 
 var (
@@ -118,6 +138,12 @@ func (r *postgresResource) Metadata(ctx context.Context, req resource.MetadataRe
 func (r *postgresResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = resource_postgres.PostgresResourceSchema(ctx)
 	resp.Schema.Description = "Provides a Ubicloud Postgres resource. This can be used to create and delete PostgreSQL databases."
+	// The generated schema carries a timeouts block, injected at the framework-IR layer
+	// (config/inject_timeouts.jq) only so the generated model gets the matching Timeouts
+	// field. Replace it here with the canonical helper block, which attaches the duration
+	// validators and descriptions. Update is reserved for the convergence wait (resize and
+	// version upgrade) tracked as a follow-up; Create and Delete are honored today.
+	resp.Schema.Blocks["timeouts"] = timeouts.Block(ctx, timeouts.Opts{Create: true, Delete: true})
 }
 
 func (r *postgresResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -127,6 +153,18 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Bound the WHOLE create (the dispatch POST, the wait-for-running poll, and the config
+	// hydration) by timeouts.create, so a stuck request at any step is cancelled at the deadline
+	// instead of hanging on the provider-wide context. opCtx is used for every network call;
+	// tfsdk state writes keep the original ctx so partial state still persists after a timeout.
+	createTimeout, timeoutDiags := state.Timeouts.Create(ctx, postgresCreateTimeoutDefault)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	opCtx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
 
 	// A read replica and a point-in-time restore are each created off an existing source
 	// through a separate child endpoint, not via the create body (which forbids parent and
@@ -142,18 +180,29 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 	switch {
 	case postgresHasRestoreTarget(&state):
 		tflog.Debug(ctx, fmt.Sprintf("Restoring postgres database: %s (source %s, restore_target %s)", postgresResourceLogIdentifier(&state), state.Parent.ValueString(), state.RestoreTarget.ValueString()))
-		postgresd, diags = r.createPostgresRestore(ctx, &state)
+		postgresd, diags = r.createPostgresRestore(opCtx, &state)
 	case postgresHasParent(&state):
 		tflog.Debug(ctx, fmt.Sprintf("Creating postgres read replica: %s (parent %s)", postgresResourceLogIdentifier(&state), state.Parent.ValueString()))
-		postgresd, diags = r.createPostgresReadReplica(ctx, &state)
+		postgresd, diags = r.createPostgresReadReplica(opCtx, &state)
 	default:
 		tflog.Debug(ctx, fmt.Sprintf("Creating postgres database: %s", postgresResourceLogIdentifier(&state)))
-		postgresd, diags = r.createPostgresPrimary(ctx, &state)
+		postgresd, diags = r.createPostgresPrimary(opCtx, &state)
 	}
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
+	if diags.HasError() {
+		// A dispatch failure caused by the operation deadline or a parent cancellation is part of
+		// the bounded-create behavior; report it as such rather than as a generic transport error.
+		if opd := postgresOpContextDiags(opCtx, ctx, "creating", "create", postgresResourceLogIdentifier(&state), createTimeout); opd != nil {
+			// The POST may have reached the server before the client gave up; adopt an
+			// already-created database into state so a timed-out create is tracked (and replaced
+			// on the next apply) instead of orphaned into a name conflict.
+			r.adoptCreatedPostgresOnTimeout(ctx, &state, resp)
+			resp.Diagnostics.Append(opd...)
+			return
+		}
+		resp.Diagnostics.Append(diags...)
 		return
 	}
+	resp.Diagnostics.Append(diags...)
 
 	// Every dispatch path returns the PostgresDatabase body on HTTP 200; a nil here means the
 	// API answered 200 with no JSON body (a contract violation committee blocks in TEST mode),
@@ -171,6 +220,33 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
+	// Block until the database reports state=running so apply completes only when the
+	// resource is actually usable (connection_string/hostname populated), matching mature DB
+	// providers. The POST above only ACCEPTS the create; the backend reaches running minutes
+	// later over many respirate hops. This is appended on top of the existing create flow:
+	// the dispatch and initial mapping above are unchanged, and the config hydration below
+	// runs against the now-running database.
+	runningPg, waitDiags := r.waitForPostgresRunning(opCtx, ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString(), createTimeout, postgresResourceLogIdentifier(&state))
+	if runningPg != nil {
+		// Re-map the latest observed surface: on success the running response now carries
+		// connection_string/hostname; on timeout the last creating snapshot keeps state in
+		// sync with the server.
+		resp.Diagnostics.Append(setPostgresStateResource(ctx, runningPg, &state)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+	if waitDiags.HasError() {
+		// Persist the partial (creating) state so a timed-out create is tracked and replaced
+		// on the next apply rather than recreated into a name conflict, then surface the
+		// timeout so Terraform taints the resource. ensurePostgresConfigKnown makes the still
+		// unknown config maps concrete so the partial state is settable.
+		ensurePostgresConfigKnown(&state)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+		resp.Diagnostics.Append(waitDiags...)
+		return
+	}
+
 	// Hydrate pg_config/pgbouncer_config from the dedicated config endpoint (the create
 	// response does not carry them), exactly as Read does, for both the primary and the
 	// read-replica path. Without this an omitted-config create leaves them at the planned
@@ -178,13 +254,61 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 	// creating-state, before representative_server is ready), so default any still-unknown
 	// map to empty afterward: an omitted-config create carries no overrides, so empty is the
 	// server's user_config and the apply converges to a known value either way.
-	resp.Diagnostics.Append(r.hydratePostgresConfig(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString(), &state)...)
+	resp.Diagnostics.Append(r.hydratePostgresConfig(opCtx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString(), &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	ensurePostgresConfigKnown(&state)
 
+	// hydratePostgresConfig is best-effort and swallows transport errors, so a deadline that
+	// elapsed during the config read-back would otherwise return success; surface it as the
+	// create timeout (or a parent cancellation) and persist the partial state so the resource is
+	// tainted, keeping the whole create bounded by timeouts.create.
+	if opd := postgresOpContextDiags(opCtx, ctx, "creating", "create", postgresResourceLogIdentifier(&state), createTimeout); opd != nil {
+		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+		resp.Diagnostics.Append(opd...)
+		return
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// adoptCreatedPostgresOnTimeout recovers from a create whose dispatch POST was bounded out by
+// opCtx (timeouts.create elapsed, or the provider context was cancelled) AFTER the server may
+// have already accepted the create. A POST that timed out client-side does not prove the
+// database was not created, so a bounded best-effort lookup on the parent context adopts an
+// already-created database into state, leaving the timed-out resource TRACKED (and replaced on
+// the next apply, since the caller still appends the tainting timeout) instead of orphaned into
+// a name conflict. The lookup RETRIES over postgresAdoptLookupBudget rather than firing once, so
+// a transient GET failure or a brief post-accept visibility lag does not abandon a real database;
+// it persists on the first confirmed 200. It persists nothing when the parent context is already
+// cancelled (no reachable server, and a plan-built partial state is unsettable: its computed
+// fields are unknown) or when the budget elapses without a 200 (treated as absence; a clean
+// recreate is correct, and Read now drops a 404 from state so no phantom entry lingers). The
+// budget runs off parentCtx, so Create takes a bounded grace past timeouts.create here rather
+// than re-extending it indefinitely.
+func (r *postgresResource) adoptCreatedPostgresOnTimeout(parentCtx context.Context, state *resource_postgres.PostgresModel, resp *resource.CreateResponse) {
+	if parentCtx.Err() != nil {
+		return
+	}
+	budgetCtx, cancel := context.WithTimeout(parentCtx, postgresAdoptLookupBudget)
+	defer cancel()
+	for {
+		postgresResp, err := r.uc.client.GetPostgresDatabaseDetailsWithResponse(budgetCtx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString())
+		if err == nil && postgresResp.StatusCode() == http.StatusOK && postgresResp.JSON200 != nil {
+			if setPostgresStateResource(parentCtx, postgresResp.JSON200, state).HasError() {
+				return
+			}
+			ensurePostgresConfigKnown(state)
+			resp.Diagnostics.Append(resp.State.Set(parentCtx, state)...)
+			return
+		}
+		select {
+		case <-budgetCtx.Done():
+			return
+		case <-time.After(postgresPollInterval):
+		}
+	}
 }
 
 // createPostgresPrimary runs the normal create (POST .../postgres/{name}). The
@@ -281,6 +405,16 @@ func (r *postgresResource) Read(ctx context.Context, req resource.ReadRequest, r
 			fmt.Sprintf("Error reading postgres database: %s", postgresResourceLogIdentifier(&state)),
 			err.Error(),
 		)
+		return
+	}
+
+	if postgresResp.StatusCode() == http.StatusNotFound {
+		// The database is gone server-side (deleted out of band, or a delete that finished after
+		// its wait timed out). Drop it from state so the next plan converges (recreate, or nothing
+		// to destroy) instead of erroring and wedging a phantom resource in state until a manual
+		// state rm. This is the idiomatic drift handling for a 404 on Read.
+		tflog.Debug(ctx, fmt.Sprintf("Postgres database not found, removing from state: %s", postgresResourceLogIdentifier(&state)))
+		resp.State.RemoveResource(ctx)
 		return
 	}
 
@@ -531,9 +665,26 @@ func (r *postgresResource) Delete(ctx context.Context, req resource.DeleteReques
 		return
 	}
 
+	// Bound the WHOLE delete (the DELETE request and the wait-until-gone poll) by
+	// timeouts.delete, so a stuck request is cancelled at the deadline rather than hanging on
+	// the provider-wide context. opCtx is used for every network call.
+	deleteTimeout, timeoutDiags := state.Timeouts.Delete(ctx, postgresDeleteTimeoutDefault)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	opCtx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
+
 	tflog.Debug(ctx, fmt.Sprintf("Deleting postgres database: %s", postgresResourceLogIdentifier(&state)))
-	postgresResp, err := r.uc.client.DeletePostgresDatabaseWithResponse(ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString())
+	postgresResp, err := r.uc.client.DeletePostgresDatabaseWithResponse(opCtx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString())
 	if err != nil {
+		// A DELETE failure caused by the operation deadline or a parent cancellation is part of
+		// the bounded-delete behavior; report it as such rather than as a generic transport error.
+		if opd := postgresOpContextDiags(opCtx, ctx, "deleting", "delete", postgresResourceLogIdentifier(&state), deleteTimeout); opd != nil {
+			resp.Diagnostics.Append(opd...)
+			return
+		}
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Error deleting postgres database: %s", postgresResourceLogIdentifier(&state)),
 			err.Error(),
@@ -547,6 +698,164 @@ func (r *postgresResource) Delete(ctx context.Context, req resource.DeleteReques
 			fmt.Sprintf("Received %s for postgres database: %s. Details: %s", postgresResp.Status(), postgresResourceLogIdentifier(&state), postgresResp.Body))
 		return
 	}
+
+	// A 404 means the database was already gone; nothing to wait for.
+	if postgresResp.StatusCode() == http.StatusNotFound {
+		return
+	}
+
+	// Block until the row is actually gone (GET 404). The DELETE above only ACCEPTS the
+	// teardown; the backend drains it over many respirate hops (destroy + EC2/EBS/IAM), so a
+	// returning destroy that did not wait would leave the resource still present.
+	resp.Diagnostics.Append(r.waitForPostgresDeleted(opCtx, ctx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString(), deleteTimeout, postgresResourceLogIdentifier(&state))...)
+}
+
+// waitForPostgresRunning polls the detailed GET until the database reports state=running, the
+// operation context is cancelled, or its deadline (timeouts.create) elapses. opCtx carries the
+// operation-scoped timeout and is used for every GET and every sleep, so a stuck read is bounded
+// by the deadline rather than the provider-wide context. parentCtx is the original provider
+// context, consulted only to classify a termination: a parent cancellation or parent deadline is
+// reported as a cancellation (raising timeouts.create could not help), the operation timeout as a
+// timeout. Postgres has no distinct terminal failure state in display_state (unavailable is
+// recoverable, not terminal), so a genuinely stuck create surfaces as the timeout rather than a
+// false early failure. It returns the most recently observed database so the caller can map the
+// full read surface on success or persist a partial snapshot on timeout; diags carries any error.
+func (r *postgresResource) waitForPostgresRunning(opCtx, parentCtx context.Context, projectID, location, name string, timeout time.Duration, logID string) (*ubicloud_client.PostgresDatabase, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	var lastPg *ubicloud_client.PostgresDatabase
+	for {
+		postgresResp, err := r.uc.client.GetPostgresDatabaseDetailsWithResponse(opCtx, projectID, location, name)
+		if err != nil {
+			if opCtx.Err() != nil {
+				diags.Append(postgresRunningWaitContextDiags(parentCtx, logID, timeout, lastPg)...)
+				return lastPg, diags
+			}
+			diags.AddError(
+				fmt.Sprintf("Error polling postgres database while waiting for it to become ready: %s", logID),
+				err.Error())
+			return lastPg, diags
+		}
+		if postgresResp.StatusCode() != http.StatusOK {
+			diags.AddError(
+				"Unexpected HTTP status code waiting for postgres database to become ready",
+				fmt.Sprintf("Received %s for postgres database: %s. Details: %s", postgresResp.Status(), logID, postgresResp.Body))
+			return lastPg, diags
+		}
+		// Only adopt a parseable body as the latest snapshot; a 200 with no JSON keeps the prior
+		// snapshot (or nil) and falls through to another bounded poll instead of dereferencing nil.
+		if postgresResp.JSON200 != nil {
+			lastPg = postgresResp.JSON200
+			if lastPg.State == postgresStateRunning {
+				return lastPg, diags
+			}
+		}
+		select {
+		case <-opCtx.Done():
+			diags.Append(postgresRunningWaitContextDiags(parentCtx, logID, timeout, lastPg)...)
+			return lastPg, diags
+		case <-time.After(postgresPollInterval):
+		}
+	}
+}
+
+// postgresRunningWaitContextDiags renders a terminated create wait as a diagnostic. When the
+// parent (provider) context is the cause it is reported as a cancellation, since raising
+// timeouts.create cannot help; otherwise the operation timeout fired and the message names the
+// last observed state and the knob to raise.
+func postgresRunningWaitContextDiags(parentCtx context.Context, logID string, timeout time.Duration, lastPg *ubicloud_client.PostgresDatabase) diag.Diagnostics {
+	var diags diag.Diagnostics
+	if parentCtx.Err() != nil {
+		diags.AddError(
+			"Cancelled while waiting for postgres database to become ready",
+			fmt.Sprintf("%s: %s", logID, parentCtx.Err().Error()))
+		return diags
+	}
+	lastState := "unknown"
+	if lastPg != nil {
+		lastState = lastPg.State
+	}
+	diags.AddError(
+		"Timeout waiting for postgres database to become ready",
+		fmt.Sprintf("postgres database %s did not reach state %q within %s (last observed state: %q). Increase timeouts.create to allow more time.", logID, postgresStateRunning, timeout, lastState))
+	return diags
+}
+
+// waitForPostgresDeleted polls the detailed GET until it 404s, the operation context is
+// cancelled, or its deadline (timeouts.delete) elapses. opCtx carries the operation-scoped
+// timeout and is used for every GET and sleep; parentCtx is consulted only to classify a
+// termination (parent cancellation/deadline vs the operation timeout). The DELETE only accepts
+// the teardown; this makes destroy block until the row is actually gone.
+func (r *postgresResource) waitForPostgresDeleted(opCtx, parentCtx context.Context, projectID, location, name string, timeout time.Duration, logID string) diag.Diagnostics {
+	var diags diag.Diagnostics
+	for {
+		postgresResp, err := r.uc.client.GetPostgresDatabaseDetailsWithResponse(opCtx, projectID, location, name)
+		if err != nil {
+			if opCtx.Err() != nil {
+				diags.Append(postgresDeletedWaitContextDiags(parentCtx, logID, timeout)...)
+				return diags
+			}
+			diags.AddError(
+				fmt.Sprintf("Error polling postgres database while waiting for it to be deleted: %s", logID),
+				err.Error())
+			return diags
+		}
+		if postgresResp.StatusCode() == http.StatusNotFound {
+			return diags
+		}
+		if postgresResp.StatusCode() != http.StatusOK {
+			diags.AddError(
+				"Unexpected HTTP status code waiting for postgres database to be deleted",
+				fmt.Sprintf("Received %s for postgres database: %s. Details: %s", postgresResp.Status(), logID, postgresResp.Body))
+			return diags
+		}
+		select {
+		case <-opCtx.Done():
+			diags.Append(postgresDeletedWaitContextDiags(parentCtx, logID, timeout)...)
+			return diags
+		case <-time.After(postgresPollInterval):
+		}
+	}
+}
+
+// postgresDeletedWaitContextDiags renders a terminated delete wait: a parent (provider) context
+// cause is reported as cancellation (raising timeouts.delete cannot help), otherwise the
+// operation timeout fired.
+func postgresDeletedWaitContextDiags(parentCtx context.Context, logID string, timeout time.Duration) diag.Diagnostics {
+	var diags diag.Diagnostics
+	if parentCtx.Err() != nil {
+		diags.AddError(
+			"Cancelled while waiting for postgres database to be deleted",
+			fmt.Sprintf("%s: %s", logID, parentCtx.Err().Error()))
+		return diags
+	}
+	diags.AddError(
+		"Timeout waiting for postgres database to be deleted",
+		fmt.Sprintf("postgres database %s was still present after %s. Increase timeouts.delete to allow more time.", logID, timeout))
+	return diags
+}
+
+// postgresOpContextDiags classifies an operation context that terminated at a create/delete step
+// OTHER than the readiness/teardown poll (the dispatch request, config hydration, or the DELETE).
+// It returns nil while opCtx is still live; a cancellation diagnostic when the parent (provider)
+// context ended (raising timeouts.* could not help); otherwise the operation-timeout diagnostic.
+// This keeps a deadline that lands on the first request, or that is swallowed by best-effort
+// hydration, from surfacing as a bare transport error or, worse, as silent success. verb labels
+// the step (e.g. "creating"); knob is the timeouts.* field to raise (e.g. "create").
+func postgresOpContextDiags(opCtx, parentCtx context.Context, verb, knob, logID string, timeout time.Duration) diag.Diagnostics {
+	if opCtx.Err() == nil {
+		return nil
+	}
+	var diags diag.Diagnostics
+	if parentCtx.Err() != nil {
+		diags.AddError(
+			fmt.Sprintf("Cancelled while %s postgres database", verb),
+			fmt.Sprintf("%s: %s", logID, parentCtx.Err().Error()))
+		return diags
+	}
+	diags.AddError(
+		fmt.Sprintf("Timeout while %s postgres database", verb),
+		fmt.Sprintf("postgres database %s did not finish %s within %s. Increase timeouts.%s to allow more time.", logID, verb, timeout, knob))
+	return diags
 }
 
 func (r *postgresResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
