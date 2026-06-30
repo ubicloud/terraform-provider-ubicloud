@@ -81,6 +81,17 @@ func TestSetPostgresStateResourceWiresReadSurface(t *testing.T) {
 		t.Errorf("ca_certificates = %q", got)
 	}
 
+	// size and storage_size are INPUTS that must round-trip from the actual VmSize /
+	// StorageSizeGib, the way an import repopulates them. An asymmetry (size mapped,
+	// storage_size not) leaves storage_size null after import -> spurious plan diff ->
+	// a hard 400 on a read replica. See pg-import-storage-size-roundtrip.
+	if got := m.Size.ValueString(); got != "m8gd.large" {
+		t.Errorf("size = %q, want m8gd.large (round-trips from VmSize)", got)
+	}
+	if m.StorageSize.IsNull() || m.StorageSize.ValueInt64() != 118 {
+		t.Errorf("storage_size = %d (null=%v), want 118 (round-trips from StorageSizeGib)", m.StorageSize.ValueInt64(), m.StorageSize.IsNull())
+	}
+
 	// The four detailed read fields v0.3.0 dropped from the resource schema but kept
 	// on the data source (see pg-resource-schema-dropped-reads). state is the epic's
 	// convergence signal; it must read from the resource, not only the data source.

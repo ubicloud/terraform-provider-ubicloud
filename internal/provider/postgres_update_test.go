@@ -704,6 +704,30 @@ func TestUpdateSizeReadbackKeepsRequestedSize(t *testing.T) {
 	}
 }
 
+// storage_size mirrors size: after a storage resize the post-apply state must equal the
+// REQUESTED storage_size, not the lagging actual storage_size_gib the detail re-read
+// returns, or the framework raises an inconsistent-result error.
+func TestUpdateStorageSizeReadbackKeepsRequestedSize(t *testing.T) {
+	ctx := t.Context()
+	capRT, resp := runUpdate(t, ctx,
+		map[string]tftypes.Value{"storage_size": numRaw(118)},
+		map[string]tftypes.Value{"storage_size": numRaw(256)},
+	)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diags: %+v", resp.Diagnostics)
+	}
+	if len(capRT.dispatchReqs()) != 1 {
+		t.Fatalf("want one PATCH, got %+v", capRT.dispatchReqs())
+	}
+	var out resource_postgres.PostgresModel
+	if diags := resp.State.Get(ctx, &out); diags.HasError() {
+		t.Fatalf("state get: %+v", diags)
+	}
+	if got := out.StorageSize.ValueInt64(); got != 256 {
+		t.Errorf("state storage_size = %d, want requested 256 (not the lagging actual)", got)
+	}
+}
+
 // postgresPatchBody sends only the changed resize/HA/tags fields and reports ok=false when
 // nothing in the PATCH set changed (so an unrelated change, e.g. a rename, issues no PATCH).
 func TestPostgresPatchBodyOnlyChangedFields(t *testing.T) {

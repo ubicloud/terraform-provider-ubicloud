@@ -46,7 +46,7 @@ func TestAccPostgresResource(t *testing.T) {
 				ImportStateIdFunc: func(state *terraform.State) (string, error) {
 					return fmt.Sprintf("%s,%s,%s", GetTestAccProjectId(), GetTestAccLocation(), resName), nil
 				},
-				ImportStateVerify: false,
+				ImportStateVerify: true,
 			},
 		},
 	})

@@ -635,6 +635,9 @@ func (r *postgresResource) Update(ctx context.Context, req resource.UpdateReques
 	if !plan.Size.IsUnknown() {
 		model.Size = plan.Size
 	}
+	if !plan.StorageSize.IsUnknown() {
+		model.StorageSize = plan.StorageSize
+	}
 
 	// version, like size, mirrors the actual major in the read surface, which lags a
 	// requested upgrade until convergence. Hold the requested version (target_version
@@ -882,6 +885,7 @@ func setPostgresStateResource(ctx context.Context, postgresd *ubicloud_client.Po
 	state.VmSize = types.StringValue(postgresd.VmSize)
 	state.Size = types.StringValue(postgresd.VmSize)
 	state.StorageSizeGib = types.Int64Value(int64(postgresd.StorageSizeGib))
+	state.StorageSize = types.Int64Value(int64(postgresd.StorageSizeGib))
 	state.Primary = types.BoolValue(postgresd.Primary)
 	state.HaType = types.StringValue(postgresd.HaType)
 	state.Version = types.StringValue(string(postgresd.Version))

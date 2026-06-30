@@ -113,9 +113,11 @@ def rfc3339:
   # plan about to change it. See postgres_plan_modifiers_test.go (pinned vs floating).
   elif .name == "username" then .string.plan_modifiers = [usfu("stringplanmodifier")]
   elif .name == "ha_type" then .string.plan_modifiers = [usfu("stringplanmodifier")]
-  # size is computed_optional (a replica omits it and inherits the parent's): pin to
-  # prior state so an omitted size does not churn to unknown on a replica re-plan.
+  # size and storage_size are computed_optional (a replica omits them and inherits the
+  # parent's): pin to prior state so an omitted value does not churn to unknown on a
+  # replica re-plan.
   elif .name == "size" then .string.plan_modifiers = [usfu("stringplanmodifier")]
+  elif .name == "storage_size" then .int64.plan_modifiers = [usfu("int64planmodifier")]
   # version only changes via the imperative upgrade POST, never on a no-op; pin it so
   # an omitted version does not churn to unknown (and does not trip Update) on an
   # in-place change elsewhere.

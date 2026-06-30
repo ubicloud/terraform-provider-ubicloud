@@ -170,6 +170,10 @@ func TestPostgresResourceUseStateForUnknown(t *testing.T) {
 	pinned := []string{
 		"id", "created_at", "ca_certificates",
 		"flavor", "ha_type", "version",
+		// size and storage_size are computed_optional; a replica omits them and inherits
+		// the parent's, so both must pin to prior state or an omitted value churns to
+		// unknown on a replica re-plan. See pg-import-storage-size-roundtrip.
+		"size", "storage_size",
 		"parent", "primary", "read_replica",
 		"tags", "pg_config", "pgbouncer_config", "maintenance_window_start_at",
 		// username is the literal constant "postgres" in the serializer; it is never read
