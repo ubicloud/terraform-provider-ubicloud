@@ -1,6 +1,6 @@
 default: build
 
-.PHONY: build install testacc
+.PHONY: build install testacc lint
 
 build:
 	go generate && go build -v ./...
@@ -10,6 +10,9 @@ install: build
 
 testacc:
 	TF_ACC=1 go test ./internal/provider/ -count=1 -v -cover -timeout 10m -skip TestAccProjectResource
+
+lint:
+	golangci-lint run --timeout 5m ./...
 
 sync:
 	cp ../ubicloud/openapi/openapi.yml config/ubicloud_openapi.yml
