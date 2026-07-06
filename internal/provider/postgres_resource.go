@@ -57,6 +57,13 @@ func (r *postgresResource) ModifyPlan(ctx context.Context, req resource.ModifyPl
 				"Blank parent",
 				"parent cannot be blank; omit it to create a primary database, or set it to the source database to restore from or replicate.",
 			)
+		case postgresHasParent(&config):
+			// Both child create bodies take size/storage_size/version from the source and force
+			// ha_type to none; a static ConflictsWith(parent) could not free a restored primary.
+			for _, name := range postgresParentInheritedConfigured(&config) {
+				summary, detail := postgresParentInheritedError(name)
+				resp.Diagnostics.AddAttributeError(path.Root(name), summary, detail)
+			}
 		case postgresPrimaryMissingSize(config.Parent, config.Size):
 			resp.Diagnostics.AddAttributeError(
 				path.Root("size"),
@@ -65,6 +72,42 @@ func (r *postgresResource) ModifyPlan(ctx context.Context, req resource.ModifyPl
 			)
 		}
 		return
+	}
+
+	// A null plan is a destroy: nothing to validate.
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var plan, state, config resource_postgres.PostgresModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// The backend rejects the PATCH route and the upgrade route on a read replica; key on PRIOR
+	// state's read_replica (a restored primary also carries parent but stays mutable). A replace
+	// recreates via the read-replica create, which accepts tags, so the tags arm stands down.
+	if state.ReadReplica.ValueBool() {
+		for _, name := range postgresParentInheritedConfigured(&config) {
+			resp.Diagnostics.AddAttributeError(
+				path.Root(name),
+				"Read replica cannot be modified",
+				fmt.Sprintf("%s cannot be changed on a read replica; modify the parent database instead.", name)+postgresStaleConfigHint(fmt.Sprintf("remove %s from the configuration", name)),
+			)
+		}
+		if !postgresPlanIsReplace(&plan, &state) && postgresAttrChanged(plan.Tags, state.Tags) {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("tags"),
+				"Read replica cannot be modified",
+				"tags cannot be changed on a read replica; the backend rejects a PATCH on one, so modify the parent database instead."+postgresStaleConfigHint("restore tags to their current server values"),
+			)
+		}
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 }
 
@@ -137,10 +180,18 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 	opCtx, cancel := context.WithTimeout(ctx, createTimeout)
 	defer cancel()
 
-	// Stamp before the create POST so an ambiguous-failure adopt has a non-zero lower bound.
+	// Stamp before endpoint selection so every adopt path has a valid non-zero lower bound.
 	dispatchAt := time.Now()
-	tflog.Debug(ctx, fmt.Sprintf("Creating postgres database: %s", postgresResourceLogIdentifier(&state)))
-	postgresd, diags := r.createPostgresPrimary(opCtx, &state)
+	var postgresd *ubicloud_client.PostgresDatabase
+	var diags diag.Diagnostics
+	switch {
+	case postgresHasParent(&state):
+		tflog.Debug(ctx, fmt.Sprintf("Creating postgres read replica: %s (parent %s)", postgresResourceLogIdentifier(&state), state.Parent.ValueString()))
+		postgresd, diags = r.createPostgresReadReplica(opCtx, &state)
+	default:
+		tflog.Debug(ctx, fmt.Sprintf("Creating postgres database: %s", postgresResourceLogIdentifier(&state)))
+		postgresd, diags = r.createPostgresPrimary(opCtx, &state)
+	}
 	if diags.HasError() {
 		if opd := postgresOpContextDiags(opCtx, ctx, "creating", "create", postgresResourceLogIdentifier(&state), createTimeout); opd != nil {
 			// The POST may have committed server-side; adopt so the row is tracked, not orphaned.

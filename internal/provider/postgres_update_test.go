@@ -325,3 +325,19 @@ func bodyJSON(t *testing.T, raw string) map[string]any {
 	}
 	return m
 }
+
+// driveModifyPlan runs ModifyPlan on the update path (non-null prior state).
+func driveModifyPlan(t *testing.T, ctx context.Context, stateOver, planOver map[string]tftypes.Value) *resource.ModifyPlanResponse {
+	t.Helper()
+	schema := resource_postgres.PostgresResourceSchema(ctx)
+	stateRaw := mkPGRaw(t, ctx, stateOver)
+	planRaw := mkPGRaw(t, ctx, planOver)
+	req := resource.ModifyPlanRequest{
+		Config: tfsdk.Config{Schema: schema, Raw: planRaw},
+		State:  tfsdk.State{Schema: schema, Raw: stateRaw},
+		Plan:   tfsdk.Plan{Schema: schema, Raw: planRaw},
+	}
+	resp := &resource.ModifyPlanResponse{Plan: tfsdk.Plan{Schema: schema, Raw: planRaw}}
+	(&postgresResource{}).ModifyPlan(ctx, req, resp)
+	return resp
+}

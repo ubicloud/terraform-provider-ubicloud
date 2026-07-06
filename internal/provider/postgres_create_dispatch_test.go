@@ -57,6 +57,22 @@ func assertNoPost(t *testing.T, capRT *captureRT) {
 	}
 }
 
+func TestCreateDispatchesReadReplicaOnParent(t *testing.T) {
+	ctx := context.Background()
+	r, capRT := newCapturingPostgresResource(t)
+	capRT.detailState = "running"
+	resp := driveCreate(t, ctx, r, map[string]tftypes.Value{
+		"parent": strRaw("tf-acc-src"),
+	})
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diags: %+v", resp.Diagnostics)
+	}
+	d := capRT.dispatchReqs()
+	if len(d) != 1 || d[0].Method != http.MethodPost || !strings.HasSuffix(d[0].Path, "/postgres/tf-acc-src/read-replica") {
+		t.Fatalf("dispatch = %+v, want one POST .../postgres/tf-acc-src/read-replica", d)
+	}
+}
+
 // runStuckPostCreate drives r.Create against a POST that never responds and returns the POST
 // path reached plus the response; only r.Create runs in the goroutine (mkPGRaw may t.Fatal).
 func runStuckPostCreate(t *testing.T, planOver map[string]tftypes.Value) (string, *resource.CreateResponse) {
@@ -103,6 +119,21 @@ func runStuckPostCreate(t *testing.T, planOver map[string]tftypes.Value) (string
 	mu.Lock()
 	defer mu.Unlock()
 	return postPath, resp
+}
+
+func TestCreateBoundsStuckReadReplicaPostByCreateTimeout(t *testing.T) {
+	postPath, resp := runStuckPostCreate(t, map[string]tftypes.Value{
+		"parent": strRaw("tf-acc-src"),
+	})
+	if !strings.HasSuffix(postPath, "/postgres/tf-acc-src/read-replica") {
+		t.Fatalf("stuck POST path = %q, want the read-replica endpoint", postPath)
+	}
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a bounded create error from a stuck read-replica POST, got success")
+	}
+	if got := resp.Diagnostics.Errors()[0].Summary(); !strings.Contains(got, "Timeout while creating") {
+		t.Fatalf("summary = %q, want a create-timeout classification", got)
+	}
 }
 
 func TestCreateClassifiesParentCancelAsCancelled(t *testing.T) {
@@ -384,5 +415,47 @@ func TestCreateAdoptsOnNonJSON200NotOnHTTPError(t *testing.T) {
 				t.Errorf("no adoption expected, but state persisted id %q", out.Id.ValueString())
 			}
 		})
+	}
+}
+
+func TestCreateReadReplicaTrimsParentPath(t *testing.T) {
+	ctx := context.Background()
+	r, capRT := newCapturingPostgresResource(t)
+	capRT.detailState = "running"
+	resp := driveCreate(t, ctx, r, map[string]tftypes.Value{
+		"parent": strRaw("  tf-acc-src  "),
+	})
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diags: %+v", resp.Diagnostics)
+	}
+	d := capRT.dispatchReqs()
+	if len(d) != 1 || d[0].Method != http.MethodPost || !strings.HasSuffix(d[0].Path, "/postgres/tf-acc-src/read-replica") {
+		t.Fatalf("dispatch = %+v, want one POST .../postgres/tf-acc-src/read-replica (parent trimmed)", d)
+	}
+}
+
+// A 5xx read-replica create is never adopted (name conflicts surface as 500), so no lookup runs.
+func TestCreateReadReplicaUnexpectedStatus(t *testing.T) {
+	ctx := context.Background()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":{"code":500,"message":"boom","type":"InternalError"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"code":404,"message":"not found","type":"NotFound"}}`))
+	}))
+	defer srv.Close()
+
+	r := newTestPostgresResource(t, srv)
+	resp := driveCreate(t, ctx, r, map[string]tftypes.Value{
+		"parent": strRaw("tf-acc-src"),
+	})
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected an error on a non-200 read-replica create, got success")
+	}
+	if got := resp.Diagnostics.Errors()[0].Summary(); got != "Unexpected HTTP status code creating postgres read replica" {
+		t.Fatalf("summary = %q, want Unexpected HTTP status code creating postgres read replica", got)
 	}
 }
