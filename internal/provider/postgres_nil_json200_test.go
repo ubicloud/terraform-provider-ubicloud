@@ -4,11 +4,14 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
+
+	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/resource_postgres"
 )
 
 // The 200 text/html page a proxy or LB answers with in front of the API: the generated client
@@ -73,5 +76,42 @@ func TestDatasourceReadFailsClosedOnEmptyBody(t *testing.T) {
 	}
 	if !resp.State.Raw.Equal(inRaw) {
 		t.Fatal("datasource Read on an empty-body 200 must not write partial state")
+	}
+}
+
+// If the post-rename re-read nil-derefs, persistRenamedNameOnError never runs, state keeps the
+// OLD name, and the next refresh 404s into a recreate that name-conflicts with the renamed row.
+func TestUpdateRenamePersistsNameWhenReadReturnsEmptyBody(t *testing.T) {
+	ctx := t.Context()
+	capRT := &captureRT{detailGetNonJSON: true}
+	r := newPostgresResourceWithRT(t, capRT)
+	resp := driveUpdate(t, ctx, r, nil, map[string]tftypes.Value{"name": strRaw("tf-acc-pg-renamed")})
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a fail-closed error when the post-rename re-read returns an empty body")
+	}
+	if got := resp.Diagnostics.Errors()[0].Summary(); got != "Empty response reading postgres database after update" {
+		t.Fatalf("summary = %q, want Empty response reading postgres database after update", got)
+	}
+	var out resource_postgres.PostgresModel
+	if diags := resp.State.Get(ctx, &out); diags.HasError() {
+		t.Fatalf("state get: %+v", diags)
+	}
+	if out.Name.ValueString() != "tf-acc-pg-renamed" {
+		t.Errorf("state name = %q, want the new name persisted despite the empty-body re-read", out.Name.ValueString())
+	}
+
+	// Non-vacuous: the rename POST must have landed before the failed re-read.
+	var sawRename, sawGetAfterRename bool
+	for _, rq := range capRT.reqs {
+		if rq.Method == http.MethodPost && strings.HasSuffix(rq.Path, "/rename") {
+			sawRename = true
+		}
+		if sawRename && rq.Method == http.MethodGet {
+			sawGetAfterRename = true
+		}
+	}
+	if !sawRename || !sawGetAfterRename {
+		t.Fatalf("expected a rename POST followed by a detail GET, got %+v", capRT.reqs)
 	}
 }

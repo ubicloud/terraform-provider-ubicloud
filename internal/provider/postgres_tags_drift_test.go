@@ -171,6 +171,26 @@ func TestCreateRoundTripsExplicitTags(t *testing.T) {
 	}
 }
 
+// The post-mutation re-read must not leak server tags back into a config-null resource's state.
+func TestUpdatePreservesConfigNullTags(t *testing.T) {
+	ctx := t.Context()
+	capRT, resp := runUpdate(t, ctx,
+		map[string]tftypes.Value{"size": strRaw("m8gd.large")}, // prior: tags omitted (null)
+		map[string]tftypes.Value{"size": strRaw("m8gd.xlarge")},
+	)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diags: %+v", resp.Diagnostics)
+	}
+	_ = capRT
+	var out resource_postgres.PostgresModel
+	if diags := resp.State.Get(ctx, &out); diags.HasError() {
+		t.Fatalf("state get: %+v", diags)
+	}
+	if !out.Tags.IsNull() {
+		t.Errorf("a config-null-tags resource must keep tags null through an unrelated Update, got %v", out.Tags)
+	}
+}
+
 // tags is the only list_nested attribute with a plan modifier, and a wrong jq path fails
 // silently (jq creates it without error), so lock the LIST row specifically.
 func TestPostgresTagsListPlanModifierLive(t *testing.T) {

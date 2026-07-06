@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -172,6 +173,44 @@ func TestModifyPlanRestoredPrimaryAllowsInPlaceUpdate(t *testing.T) {
 	}
 }
 
+func TestUpdateRestoredPrimaryResizeDispatchesPatch(t *testing.T) {
+	ctx := t.Context()
+	parentPath := strRaw("/location/aws-us-east-1/postgres/tf-acc-src")
+	stateOver := map[string]tftypes.Value{
+		"read_replica": boolRaw(false),
+		"parent":       parentPath,
+		"size":         strRaw("m8gd.large"),
+		"storage_size": numRaw(64),
+		"ha_type":      strRaw("none"),
+		"version":      strRaw("17"),
+	}
+	planOver := map[string]tftypes.Value{
+		"read_replica": boolRaw(false),
+		"parent":       parentPath,
+		"size":         strRaw("m16gd.large"),
+		"storage_size": numRaw(64),
+		"ha_type":      strRaw("none"),
+		"version":      strRaw("17"),
+	}
+	capRT, resp := runUpdate(t, ctx, stateOver, planOver)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("restored primary resize: unexpected diags: %+v", resp.Diagnostics)
+	}
+	var patch *capturedReq
+	for i := range capRT.reqs {
+		rq := capRT.reqs[i]
+		if rq.Method == http.MethodPatch && strings.HasSuffix(rq.Path, "/postgres/tf-acc-pg") {
+			patch = &rq
+		}
+	}
+	if patch == nil {
+		t.Fatalf("no resize PATCH .../postgres/tf-acc-pg issued; calls=%+v", capRT.dispatchReqs())
+	}
+	if body := bodyJSON(t, patch.Body); body["size"] != "m16gd.large" {
+		t.Errorf("PATCH size = %v, want m16gd.large", body["size"])
+	}
+}
+
 // postgresHasParent treats a blank parent as unset, so without this guard a blank-parent
 // config would silently dispatch createPostgresPrimary; the error must be drawn alone.
 func TestModifyPlanCreateRejectsBlankParent(t *testing.T) {
@@ -246,6 +285,32 @@ func TestCreateRejectsBlankParentAtApply(t *testing.T) {
 		t.Fatalf("want a \"Blank parent\" error, got %+v", resp.Diagnostics)
 	}
 	assertNoPost(t, capRT)
+}
+
+// driveUpdate bypasses ModifyPlan, exercising the apply-time backstop for a replica change
+// that was unknown at plan: reject before any doomed dispatch.
+func TestUpdateReadReplicaRejectsResizeAtApply(t *testing.T) {
+	ctx := t.Context()
+	parentPath := strRaw("/location/aws-us-east-1/postgres/tf-acc-src")
+	fields := func(size tftypes.Value) map[string]tftypes.Value {
+		return map[string]tftypes.Value{
+			"read_replica": boolRaw(true),
+			"parent":       parentPath,
+			"size":         size,
+			"storage_size": numRaw(64),
+			"ha_type":      strRaw("none"),
+			"version":      strRaw("17"),
+		}
+	}
+	capRT, resp := runUpdate(t, ctx, fields(strRaw("m8gd.large")), fields(strRaw("m16gd.large")))
+	if !resp.Diagnostics.HasError() || resp.Diagnostics.Errors()[0].Summary() != "Read replica cannot be modified" {
+		t.Fatalf("want a \"Read replica cannot be modified\" error, got %+v", resp.Diagnostics)
+	}
+	for _, rq := range capRT.reqs {
+		if rq.Method == http.MethodPatch {
+			t.Errorf("a PATCH was issued for a replica resize: %s", rq.Path)
+		}
+	}
 }
 
 // The backend allows config, rename, and set-maintenance-window on a replica (no

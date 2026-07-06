@@ -161,6 +161,10 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 	// resource must persist tags=null or the next plan phantoms (see the ModifyPlan re-pin).
 	tagsUnmanaged := state.Tags.IsNull() || state.Tags.IsUnknown()
 
+	// The window is set through its own POST, not the create body; capture the configured hour
+	// before the read-backs overwrite it. An omitted window stays server-chosen.
+	maintenanceWindow := state.MaintenanceWindowStartAt
+
 	// Backstops an interpolation that resolved to whitespace; the restore path has its own guard.
 	if !postgresHasRestoreTarget(&state) && postgresParentBlank(state.Parent) {
 		resp.Diagnostics.AddAttributeError(
@@ -257,8 +261,19 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	// Both remaining exits persist state; normalize unmanaged tags once.
+	// Both remaining exits persist state; normalize once (the window POST never touches tags).
 	setPostgresTagsNullIfUnmanaged(ctx, tagsUnmanaged, &state)
+
+	// Not a create-body input; on failure persist the partial state so the row is tracked, then taint.
+	if !maintenanceWindow.IsUnknown() && !maintenanceWindow.IsNull() {
+		tflog.Debug(ctx, fmt.Sprintf("Setting postgres maintenance window: %s", postgresResourceLogIdentifier(&state)))
+		if setDiags := r.applyPostgresSetMaintenanceWindow(opCtx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString(), maintenanceWindow.ValueInt64(), postgresResourceLogIdentifier(&state)); setDiags.HasError() {
+			resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+			resp.Diagnostics.Append(setDiags...)
+			return
+		}
+		state.MaintenanceWindowStartAt = maintenanceWindow
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -463,17 +478,203 @@ func ensurePostgresConfigKnown(state *resource_postgres.PostgresModel) {
 	}
 }
 
+// Update dispatches one endpoint per attribute group: version -> the one-major upgrade (only
+// on its own: it is irreversible), {size,storage_size,ha_type,tags} -> PATCH, config -> merge
+// of the changed map, window -> its POST, name -> rename LAST so mutations address the old name.
 func (r *postgresResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var state resource_postgres.PostgresModel
+	var plan, state resource_postgres.PostgresModel
 
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.AddError(
-		"Update of postgres is not supported",
-		fmt.Sprintf("Cannot update postgres database: %s", postgresResourceLogIdentifier(&state)))
+	// A config-null-tags resource must keep tags=null: the re-read hydrates server tags, and
+	// persisting them re-arms the phantom AND mismatches the planned null.
+	tagsUnmanaged := plan.Tags.IsNull() || plan.Tags.IsUnknown()
+
+	logID := postgresResourceLogIdentifier(&state)
+
+	projectID := state.ProjectId.ValueString()
+	location := state.Location.ValueString()
+	oldName := state.Name.ValueString()
+
+	// Backstops a replica change that was unknown at plan and resolved forbidden, before any
+	// doomed call; config, rename, and the window stay allowed. Keys on prior read_replica.
+	if state.ReadReplica.ValueBool() {
+		changed := postgresAttrChanged(plan.Tags, state.Tags)
+		for _, a := range postgresParentInheritedAttrs {
+			changed = changed || postgresAttrChanged(a.get(&plan), a.get(&state))
+		}
+		if changed {
+			resp.Diagnostics.AddError(
+				"Read replica cannot be modified",
+				fmt.Sprintf("A read replica cannot be resized, HA-changed, tag-changed, or version-upgraded; modify the parent database instead: %s.", logID))
+			return
+		}
+	}
+
+	// version handles first so a rejected jump aborts before any other mutation lands.
+	versionChanged := postgresAttrChanged(plan.Version, state.Version)
+	if versionChanged {
+		if summary, detail := postgresVersionUpgradeError(plan.Version.ValueString(), state.Version.ValueString()); summary != "" {
+			resp.Diagnostics.AddError(summary, fmt.Sprintf("%s: %s", detail, logID))
+			return
+		}
+		// An upgrade is irreversible; a later failed mutation would strand it, so reject the combination.
+		if postgresNonVersionMutableChanged(&plan, &state) {
+			resp.Diagnostics.AddError(
+				"Postgres version upgrade must be applied on its own",
+				fmt.Sprintf("A major version upgrade cannot be combined with other changes (size, storage_size, ha_type, tags, pg_config, pgbouncer_config, maintenance_window_start_at, name); apply the version change separately: %s.", logID))
+			return
+		}
+		if postgresUpgradeInFlight(&plan, &state) {
+			// Already pending: a second POST fails the convergence precheck; surface a FAILED upgrade.
+			resp.Diagnostics.Append(r.checkPostgresUpgradeFailed(ctx, projectID, location, oldName, logID)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+		} else {
+			tflog.Debug(ctx, fmt.Sprintf("Upgrading postgres database: %s", logID))
+			resp.Diagnostics.Append(r.applyPostgresUpgrade(ctx, projectID, location, oldName, logID)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+		}
+	}
+
+	// Read the server config BEFORE any mutation so a mixed apply cannot half-land; tombstones
+	// must cover every key the server holds, not just (possibly stale) state.
+	var serverCfg *ubicloud_client.PostgresConfig
+	configChanged := postgresConfigChanged(&plan, &state)
+	if configChanged {
+		serverCfg = r.readPostgresConfig(ctx, projectID, location, oldName)
+		if serverCfg == nil {
+			resp.Diagnostics.AddError(
+				"Unable to read current postgres config before update",
+				fmt.Sprintf("A pg_config/pgbouncer_config change requires reading the current server configuration (GET .../config) to compute a correct declarative replace, but that read was unavailable: %s. Retry once the database is reachable.", logID))
+			return
+		}
+	}
+
+	patchBody, patchChanged, diags := postgresPatchBody(ctx, &plan, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if patchChanged {
+		tflog.Debug(ctx, fmt.Sprintf("Patching postgres database: %s", logID))
+		resp.Diagnostics.Append(r.applyPostgresPatch(ctx, projectID, location, oldName, patchBody, logID)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
+	if configChanged {
+		configBody, configDiags := postgresConfigPatchBody(ctx, &plan, &state, serverCfg)
+		resp.Diagnostics.Append(configDiags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		tflog.Debug(ctx, fmt.Sprintf("Replacing postgres database config: %s", logID))
+		resp.Diagnostics.Append(r.applyPostgresConfigMerge(ctx, projectID, location, oldName, configBody, logID)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
+	// The window is its own POST; dispatch under the OLD name with abort-on-error semantics.
+	if postgresMaintenanceWindowChanged(&plan, &state) {
+		tflog.Debug(ctx, fmt.Sprintf("Setting postgres maintenance window: %s", logID))
+		resp.Diagnostics.Append(r.applyPostgresSetMaintenanceWindow(ctx, projectID, location, oldName, plan.MaintenanceWindowStartAt.ValueInt64(), logID)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
+	finalName := oldName
+	if postgresAttrChanged(plan.Name, state.Name) {
+		newName := plan.Name.ValueString()
+		tflog.Debug(ctx, fmt.Sprintf("Renaming postgres database: %s -> %s", logID, newName))
+		resp.Diagnostics.Append(r.applyPostgresRename(ctx, projectID, location, oldName, newName, logID)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		finalName = newName
+	}
+
+	// Re-read even when no mutation fired: unpinned computeds go unknown on every update plan.
+	// Start from the plan so fields the GET does not return (config maps, storage_size) survive.
+	postgresResp, err := r.uc.client.GetPostgresDatabaseDetailsWithResponse(ctx, projectID, location, finalName)
+	if err != nil {
+		r.persistRenamedNameOnError(ctx, oldName, finalName, resp)
+		resp.Diagnostics.AddError(
+			fmt.Sprintf("Error reading postgres database after update: %s", logID),
+			err.Error(),
+		)
+		return
+	}
+	if postgresResp.StatusCode() != http.StatusOK {
+		r.persistRenamedNameOnError(ctx, oldName, finalName, resp)
+		resp.Diagnostics.AddError(
+			"Unexpected HTTP status code reading postgres database after update",
+			fmt.Sprintf("Received %s for postgres database: %s. Details: %s", postgresResp.Status(), logID, postgresResp.Body))
+		return
+	}
+
+	// Fail closed like a non-200, persisting the new name first: the rename already landed, and
+	// keeping the old name would 404 the next refresh into a spurious recreate.
+	if postgresResp.JSON200 == nil {
+		r.persistRenamedNameOnError(ctx, oldName, finalName, resp)
+		resp.Diagnostics.AddError(
+			"Empty response reading postgres database after update",
+			fmt.Sprintf("the API returned no database body: %s", logID),
+		)
+		return
+	}
+
+	model := plan
+	resp.Diagnostics.Append(setPostgresStateResource(ctx, postgresResp.JSON200, &model)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Hold the config maps at plan values: the server-key tombstones make the post-merge server
+	// map equal the plan; overlaying the server would resurface out-of-band drift post-apply.
+
+	// The read surface lags a resize (target_vm_size has the target); hold the requested size.
+	if !plan.Size.IsUnknown() {
+		model.Size = plan.Size
+	}
+	if !plan.StorageSize.IsUnknown() {
+		model.StorageSize = plan.StorageSize
+	}
+
+	// Like size: the actual version lags the upgrade (target_version has the target); hold it.
+	if versionChanged && !plan.Version.IsUnknown() {
+		model.Version = plan.Version
+	}
+
+	// The server persists the hour with no lag; hold the plan (USFU keeps unmanaged stable).
+	if !plan.MaintenanceWindowStartAt.IsUnknown() {
+		model.MaintenanceWindowStartAt = plan.MaintenanceWindowStartAt
+	}
+
+	// An unpinned null-prior companion (imported at creating-state) defaults to the empty map.
+	ensurePostgresConfigKnown(&model)
+
+	setPostgresTagsNullIfUnmanaged(ctx, tagsUnmanaged, &model)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+}
+
+// The rename landed; without the new name the next refresh 404s into a spurious recreate.
+func (r *postgresResource) persistRenamedNameOnError(ctx context.Context, oldName, finalName string, resp *resource.UpdateResponse) {
+	if finalName == oldName {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), finalName)...)
 }
 
 func (r *postgresResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
