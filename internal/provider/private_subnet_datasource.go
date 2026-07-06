@@ -81,6 +81,15 @@ func (d *privateSubnetDataSource) Read(ctx context.Context, req datasource.ReadR
 		return
 	}
 
+	// A non-JSON 200 (proxy interposition) leaves JSON200 nil; fail closed rather than nil-deref.
+	if privateSubnetResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Empty response reading private subnet",
+			fmt.Sprintf("the API returned no private subnet body: %s", privateSubnetDataSourceLogIdentifier(&state)),
+		)
+		return
+	}
+
 	diags := setPrivateSubnetStateDatasource(ctx, privateSubnetResp.JSON200, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {

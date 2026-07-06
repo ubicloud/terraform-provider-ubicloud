@@ -11,7 +11,7 @@ func TestAccPrivateSubnetDataSource(t *testing.T) {
 	resName := GetRandomResourceName("sn")
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		PreCheck:                 func() { TestAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheck(t); requireAccEnv(t, "UBICLOUD_ACC_TEST_FIREWALL") },
 		Steps: []resource.TestStep{
 			{
 				Config: providerConfig +

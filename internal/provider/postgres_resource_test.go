@@ -12,6 +12,7 @@ func TestAccPostgresResource(t *testing.T) {
 	resName := GetRandomResourceName("pg")
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { testAccPreCheck(t) },
 		Steps: []resource.TestStep{
 			// Test Create and Read, with a configured maintenance window (dispatched through the
 			// separate POST .../set-maintenance-window after the database exists and read back).

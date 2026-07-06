@@ -25,7 +25,7 @@ var (
 
 const TestAccNamePrefix = "tf-acc"
 
-func TestAccPreCheck(t *testing.T) {
+func testAccPreCheck(t *testing.T) {
 	if v := os.Getenv("UBICLOUD_API_TOKEN"); v == "" {
 		t.Fatal("UBICLOUD_API_TOKEN must be set for acceptance tests")
 	}
@@ -36,6 +36,12 @@ func TestAccPreCheck(t *testing.T) {
 
 	if v := os.Getenv("UBICLOUD_ACC_TEST_LOCATION"); v == "" {
 		t.Fatal("UBICLOUD_ACC_TEST_LOCATION must be set for acceptance tests")
+	}
+}
+
+func requireAccEnv(t *testing.T, name string) {
+	if v := os.Getenv(name); v == "" {
+		t.Fatalf("%s must be set for acceptance tests", name)
 	}
 }
 

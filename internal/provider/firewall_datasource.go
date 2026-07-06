@@ -80,6 +80,15 @@ func (d *firewallDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
+	// A non-JSON 200 (proxy interposition) leaves JSON200 nil; fail closed rather than nil-deref.
+	if firewallResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Empty response reading firewall",
+			fmt.Sprintf("the API returned no firewall body: %s", firewallDataSourceLogIdentifier(&state)),
+		)
+		return
+	}
+
 	state.Id = types.StringValue(firewallResp.JSON200.Id)
 	state.Name = types.StringValue(firewallResp.JSON200.Name)
 	state.Description = types.StringValue(firewallResp.JSON200.Description)

@@ -39,7 +39,7 @@ func TestAccPostgresConfigNullTagsNoPhantom(t *testing.T) {
 	resName := GetRandomResourceName("pgtags")
 	addr := "ubicloud_postgres.testtags"
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { TestAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

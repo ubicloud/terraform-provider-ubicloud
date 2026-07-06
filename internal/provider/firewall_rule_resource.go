@@ -87,6 +87,15 @@ func (r *firewallRuleResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
+	// A non-JSON 200 leaves JSON200 nil; AsFirewallRule has a value receiver and would panic.
+	if firewallRuleResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Empty response creating firewall rule",
+			fmt.Sprintf("the API returned no firewall rule body: %s", firewallRuleResourceLogIdentifier(&state)),
+		)
+		return
+	}
+
 	rule, err := firewallRuleResp.JSON200.AsFirewallRule()
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -123,10 +132,26 @@ func (r *firewallRuleResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
+	if firewallRuleResp.StatusCode() == http.StatusNotFound {
+		// Gone server-side: drop from state so the next plan converges instead of erroring.
+		tflog.Debug(ctx, fmt.Sprintf("Firewall rule not found, removing from state: %s", firewallRuleResourceLogIdentifier(&state)))
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	if firewallRuleResp.StatusCode() != http.StatusOK {
 		resp.Diagnostics.AddError(
 			"Unexpected HTTP status code reading firewall rule",
 			fmt.Sprintf("Received %s for firewall rule: %s. Details: %s", firewallRuleResp.Status(), firewallRuleResourceLogIdentifier(&state), firewallRuleResp.Body))
+		return
+	}
+
+	// A non-JSON 200 leaves JSON200 nil; not a 404, so fail closed without RemoveResource.
+	if firewallRuleResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Empty response reading firewall rule",
+			fmt.Sprintf("the API returned no firewall rule body: %s", firewallRuleResourceLogIdentifier(&state)),
+		)
 		return
 	}
 

@@ -79,6 +79,15 @@ func (d *vmDataSource) Read(ctx context.Context, req datasource.ReadRequest, res
 		return
 	}
 
+	// A non-JSON 200 (proxy interposition) leaves JSON200 nil; fail closed rather than nil-deref.
+	if vmResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Empty response reading vm",
+			fmt.Sprintf("the API returned no vm body: %s", vmDataSourceLogIdentifier(&state)),
+		)
+		return
+	}
+
 	diags := setVmStateDatasource(ctx, vmResp.JSON200, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {

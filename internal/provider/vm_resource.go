@@ -9,7 +9,6 @@ import (
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/resource_vm"
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/ubicloud_client"
 
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -125,11 +124,16 @@ func (r *vmResource) Create(ctx context.Context, req resource.CreateRequest, res
 		return
 	}
 
-	diags := setVmStateResource(ctx, vmResp.JSON200, &state)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
+	// A non-JSON 200 (proxy interposition) leaves JSON200 nil; fail closed rather than nil-deref.
+	if vmResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Empty response creating vm",
+			fmt.Sprintf("the API returned no vm body: %s", vmResourceLogIdentifier(&state)),
+		)
 		return
 	}
+
+	setVmStateResource(vmResp.JSON200, &state)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -152,6 +156,13 @@ func (r *vmResource) Read(ctx context.Context, req resource.ReadRequest, resp *r
 		return
 	}
 
+	if vmResp.StatusCode() == http.StatusNotFound {
+		// Gone server-side: drop from state so the next plan converges instead of erroring.
+		tflog.Debug(ctx, fmt.Sprintf("Vm not found, removing from state: %s", vmResourceLogIdentifier(&state)))
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	if vmResp.StatusCode() != http.StatusOK {
 		resp.Diagnostics.AddError(
 			"Unexpected HTTP status code reading vm",
@@ -159,11 +170,16 @@ func (r *vmResource) Read(ctx context.Context, req resource.ReadRequest, resp *r
 		return
 	}
 
-	diags := setVmStateResource(ctx, vmResp.JSON200, &state)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
+	// A non-JSON 200 leaves JSON200 nil; not a 404, so fail closed without RemoveResource.
+	if vmResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Empty response reading vm",
+			fmt.Sprintf("the API returned no vm body: %s", vmResourceLogIdentifier(&state)),
+		)
 		return
 	}
+
+	setVmStateResource(vmResp.JSON200, &state)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -222,7 +238,7 @@ func (r *vmResource) ImportState(ctx context.Context, req resource.ImportStateRe
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), idParts[2])...)
 }
 
-func setVmStateResource(_ context.Context, vmd *ubicloud_client.Vm, state *resource_vm.VmModel) diag.Diagnostics {
+func setVmStateResource(vmd *ubicloud_client.Vm, state *resource_vm.VmModel) {
 	state.BootImage = types.StringValue(vmd.BootImage)
 	state.EnableIp4 = types.BoolValue(vmd.Ip4Enabled)
 	state.Gpu = types.StringPointerValue(vmd.Gpu)
@@ -236,7 +252,6 @@ func setVmStateResource(_ context.Context, vmd *ubicloud_client.Vm, state *resou
 	if state.InitScript.IsNull() || state.InitScript.IsUnknown() {
 		state.InitScript = types.StringValue("")
 	}
-	return nil
 }
 
 func vmResourceLogIdentifier(state *resource_vm.VmModel) string {
