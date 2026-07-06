@@ -9,7 +9,6 @@ import (
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/resource_postgres"
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/ubicloud_client"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -192,46 +191,52 @@ func (r *postgresResource) ImportState(ctx context.Context, req resource.ImportS
 }
 
 func setPostgresStateResource(ctx context.Context, postgresd *ubicloud_client.PostgresDatabase, state *resource_postgres.PostgresModel) diag.Diagnostics {
-	var diags diag.Diagnostics
-	state.Flavor = types.StringValue(postgresd.Flavor)
-	state.HaType = types.StringValue(postgresd.HaType)
-	state.Location = types.StringValue(postgresd.Location)
+	state.Id = types.StringValue(postgresd.Id)
 	state.Name = types.StringValue(postgresd.Name)
+	state.State = types.StringValue(postgresd.State)
+	state.Location = types.StringValue(postgresd.Location)
+	state.VmSize = types.StringValue(postgresd.VmSize)
 	state.Size = types.StringValue(postgresd.VmSize)
+	state.StorageSizeGib = types.Int64Value(int64(postgresd.StorageSizeGib))
 	state.StorageSize = types.Int64Value(int64(postgresd.StorageSizeGib))
+	state.Primary = types.BoolValue(postgresd.Primary)
+	state.HaType = types.StringValue(postgresd.HaType)
 	state.Version = types.StringValue(string(postgresd.Version))
-	// These fields are not returned by the API; preserve known state or default to empty.
-	if state.PgConfig.IsNull() || state.PgConfig.IsUnknown() {
-		state.PgConfig = types.MapValueMust(types.StringType, map[string]attr.Value{})
+	state.ConnectionString = types.StringPointerValue(postgresd.ConnectionString)
+	state.EarliestRestoreTime = types.StringPointerValue(postgresd.EarliestRestoreTime)
+	state.LatestRestoreTime = types.StringValue(postgresd.LatestRestoreTime)
+	state.Flavor = types.StringValue(postgresd.Flavor)
+	state.TargetVmSize = types.StringPointerValue(postgresd.TargetVmSize)
+	state.TargetStorageSizeGib = int64PointerValue(postgresd.TargetStorageSizeGib)
+	state.TargetVersion = types.StringValue(string(postgresd.TargetVersion))
+	state.TargetServerCount = types.Int64Value(int64(postgresd.TargetServerCount))
+	state.MaintenanceWindowStartAt = int64PointerValue(postgresd.MaintenanceWindowStartAt)
+	state.ReadReplica = types.BoolValue(postgresd.ReadReplica)
+	// The API reports parent as its canonical PATH, not the configured name/id; fill it only
+	// when unset so a user-supplied reference round-trips (an import gets the path).
+	if state.Parent.IsNull() || state.Parent.IsUnknown() {
+		state.Parent = types.StringPointerValue(postgresd.Parent)
 	}
-	if state.PgbouncerConfig.IsNull() || state.PgbouncerConfig.IsUnknown() {
-		state.PgbouncerConfig = types.MapValueMust(types.StringType, map[string]attr.Value{})
+	state.FallbackActive = types.BoolValue(postgresd.FallbackActive)
+	state.CaCertificates = types.StringPointerValue(postgresd.CaCertificates)
+	state.CreatedAt = types.StringValue(postgresd.CreatedAt.Format(iso8601Layout))
+	state.Hostname = types.StringPointerValue(postgresd.Hostname)
+	state.Username = types.StringPointerValue(postgresd.Username)
+	state.Password = types.StringPointerValue(postgresd.Password)
+
+	firewallRulesListValue, diags := GetPostgresFirewallRulesState(ctx, postgresd.FirewallRules)
+	if diags.HasError() {
+		return diags
 	}
-	if state.PrivateSubnetName.IsNull() || state.PrivateSubnetName.IsUnknown() {
-		state.PrivateSubnetName = types.StringValue("")
+	state.FirewallRules = firewallRulesListValue
+
+	tagsListValue, tagsDiags := GetPostgresTagsState(ctx, postgresd.Tags)
+	diags.Append(tagsDiags...)
+	if diags.HasError() {
+		return diags
 	}
-	if state.RestrictByDefault.IsNull() || state.RestrictByDefault.IsUnknown() {
-		state.RestrictByDefault = types.BoolValue(false)
-	}
-	tagsValue := resource_postgres.TagsValue{}
-	var tagsValues []resource_postgres.TagsValue
-	for _, t := range postgresd.Tags {
-		tv := resource_postgres.NewTagsValueMust(tagsValue.AttributeTypes(ctx), map[string]attr.Value{
-			"key":   types.StringValue(t.Key),
-			"value": types.StringValue(t.Value),
-		})
-		tagsValues = append(tagsValues, tv)
-	}
-	if tagsValues == nil {
-		tagsValues = []resource_postgres.TagsValue{}
-	}
-	tagsList, tagsDiag := types.ListValueFrom(ctx, tagsValue.Type(ctx), tagsValues)
-	diags.Append(tagsDiag...)
-	if !diags.HasError() {
-		state.Tags = tagsList
-	} else if state.Tags.IsNull() || state.Tags.IsUnknown() {
-		state.Tags, _ = types.ListValue(tagsValue.Type(ctx), []attr.Value{})
-	}
+	state.Tags = tagsListValue
+
 	return diags
 }
 
