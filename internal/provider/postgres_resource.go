@@ -88,6 +88,17 @@ func (r *postgresResource) ModifyPlan(ctx context.Context, req resource.ModifyPl
 		return
 	}
 
+	// An explicit blank parent differs from prior, so it would plan a replace that fails only at
+	// apply. Clearing parent would be promote-read-replica, which is not wired; reject at plan.
+	if postgresParentBlank(config.Parent) {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("parent"),
+			"Blank parent",
+			"parent cannot be blank; omit it to keep the current database. This provider does not support clearing parent to promote a read replica."+postgresStaleConfigHint("omit parent"),
+		)
+		return
+	}
+
 	// The backend rejects the PATCH route and the upgrade route on a read replica; key on PRIOR
 	// state's read_replica (a restored primary also carries parent but stays mutable). A replace
 	// recreates via the read-replica create, which accepts tags, so the tags arm stands down.
@@ -109,6 +120,95 @@ func (r *postgresResource) ModifyPlan(ctx context.Context, req resource.ModifyPl
 		if resp.Diagnostics.HasError() {
 			return
 		}
+	}
+
+	// A parent-set replace recreates through a child create that ignores size/storage_size/
+	// ha_type/version, so a changed or still-unknown value would be dropped silently after the
+	// destroy; an equal value (pinned by UseStateForUnknown) defers to the framework's check.
+	if postgresPlanIsReplace(&plan, &state) && !plan.Parent.IsNull() {
+		for _, a := range postgresParentInheritedAttrs {
+			if !a.get(&plan).Equal(a.get(&state)) {
+				summary, detail := postgresParentInheritedError(a.name)
+				resp.Diagnostics.AddAttributeError(path.Root(a.name), summary,
+					detail+postgresStaleConfigHint(fmt.Sprintf("remove %s from the configuration", a.name)))
+			}
+		}
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
+	// A replace recreates the database fresh at the planned version, so the in-place upgrade
+	// guards do not apply; Update's own guards still cover an immutable resolving to a no-op.
+	if !postgresPlanIsReplace(&plan, &state) && postgresAttrChanged(plan.Version, state.Version) {
+		versionFix := "align version with the current server major"
+		if v := state.Version.ValueString(); v != "" {
+			versionFix = fmt.Sprintf("set version to its current server value (version = %q)", v)
+		}
+		if summary, detail := postgresVersionUpgradeError(plan.Version.ValueString(), state.Version.ValueString()); summary != "" {
+			resp.Diagnostics.AddAttributeError(path.Root("version"), summary, detail+postgresStaleConfigHint(versionFix))
+		} else if postgresNonVersionMutableChanged(&plan, &state) {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("version"),
+				"Postgres version upgrade must be applied on its own",
+				"A major version upgrade cannot be combined with other changes (size, storage_size, ha_type, tags, pg_config, pgbouncer_config, maintenance_window_start_at, name); apply the version change in a separate plan."+postgresStaleConfigHint(versionFix))
+		}
+		return
+	}
+
+	// Core's no-op gate compares proposed state to prior BEFORE plan modifiers run, so config-null
+	// tags over a non-null prior (import, un-manage) cascades every unpinned computed to unknown.
+	// When nothing else changed, re-pin them so the plan equals prior and no update is planned.
+	if config.Tags.IsNull() && !postgresPlanChangesBeyondTags(&plan, &state) {
+		repinPostgresPhantomComputeds(&plan, &state)
+		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
+	}
+}
+
+// repinPostgresPhantomComputeds copies prior into each unpinned computed, nulls included: the
+// caller proved no configured attribute differs, so prior IS the post-apply value.
+func repinPostgresPhantomComputeds(plan, state *resource_postgres.PostgresModel) {
+	if plan.State.IsUnknown() {
+		plan.State = state.State
+	}
+	if plan.VmSize.IsUnknown() {
+		plan.VmSize = state.VmSize
+	}
+	if plan.StorageSizeGib.IsUnknown() {
+		plan.StorageSizeGib = state.StorageSizeGib
+	}
+	if plan.TargetVmSize.IsUnknown() {
+		plan.TargetVmSize = state.TargetVmSize
+	}
+	if plan.TargetStorageSizeGib.IsUnknown() {
+		plan.TargetStorageSizeGib = state.TargetStorageSizeGib
+	}
+	if plan.TargetVersion.IsUnknown() {
+		plan.TargetVersion = state.TargetVersion
+	}
+	if plan.TargetServerCount.IsUnknown() {
+		plan.TargetServerCount = state.TargetServerCount
+	}
+	if plan.ConnectionString.IsUnknown() {
+		plan.ConnectionString = state.ConnectionString
+	}
+	if plan.Hostname.IsUnknown() {
+		plan.Hostname = state.Hostname
+	}
+	if plan.Password.IsUnknown() {
+		plan.Password = state.Password
+	}
+	if plan.EarliestRestoreTime.IsUnknown() {
+		plan.EarliestRestoreTime = state.EarliestRestoreTime
+	}
+	if plan.LatestRestoreTime.IsUnknown() {
+		plan.LatestRestoreTime = state.LatestRestoreTime
+	}
+	if plan.FallbackActive.IsUnknown() {
+		plan.FallbackActive = state.FallbackActive
+	}
+	if plan.FirewallRules.IsUnknown() {
+		plan.FirewallRules = state.FirewallRules
 	}
 }
 

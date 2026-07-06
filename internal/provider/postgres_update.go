@@ -67,6 +67,21 @@ func postgresPlanIsReplace(plan, state *resource_postgres.PostgresModel) bool {
 		!plan.Location.Equal(state.Location)
 }
 
+// Compares the POST-MODIFIER plan to prior: USFU has pinned omitted attrs and ParentRefStability
+// canonicalized parent, so unchanged reads equal and unknown counts as a change. tags is
+// excluded: a config-null tags is the phantom trigger the caller gates on.
+func postgresPlanChangesBeyondTags(plan, state *resource_postgres.PostgresModel) bool {
+	return postgresPlanIsReplace(plan, state) ||
+		!plan.Size.Equal(state.Size) ||
+		!plan.StorageSize.Equal(state.StorageSize) ||
+		!plan.HaType.Equal(state.HaType) ||
+		!plan.Version.Equal(state.Version) ||
+		!plan.Name.Equal(state.Name) ||
+		!plan.PgConfig.Equal(state.PgConfig) ||
+		!plan.PgbouncerConfig.Equal(state.PgbouncerConfig) ||
+		!plan.MaintenanceWindowStartAt.Equal(state.MaintenanceWindowStartAt)
+}
+
 // target_version already equals the plan while version lags: the server is already upgrading.
 func postgresUpgradeInFlight(plan, state *resource_postgres.PostgresModel) bool {
 	if state.TargetVersion.IsNull() || state.TargetVersion.IsUnknown() {

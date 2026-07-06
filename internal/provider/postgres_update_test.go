@@ -715,6 +715,39 @@ func driveModifyPlan(t *testing.T, ctx context.Context, stateOver, planOver map[
 	return resp
 }
 
+func TestModifyPlanVersionMultiMajorRejected(t *testing.T) {
+	ctx := t.Context()
+	resp := driveModifyPlan(t, ctx,
+		map[string]tftypes.Value{"version": strRaw("16")},
+		map[string]tftypes.Value{"version": strRaw("18")},
+	)
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("multi-major version jump must be rejected at plan time")
+	}
+}
+
+func TestModifyPlanOneMajorUpgradeAllowed(t *testing.T) {
+	ctx := t.Context()
+	resp := driveModifyPlan(t, ctx,
+		map[string]tftypes.Value{"version": strRaw("16")},
+		map[string]tftypes.Value{"version": strRaw("17")},
+	)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("one-major upgrade must be allowed at plan time: %+v", resp.Diagnostics)
+	}
+}
+
+func TestModifyPlanVersionWithOtherChangeRejected(t *testing.T) {
+	ctx := t.Context()
+	resp := driveModifyPlan(t, ctx,
+		map[string]tftypes.Value{"version": strRaw("16"), "size": strRaw("m8gd.large")},
+		map[string]tftypes.Value{"version": strRaw("17"), "size": strRaw("m8gd.xlarge")},
+	)
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("combined version+size change must be rejected at plan time")
+	}
+}
+
 // Even a no-mutable-change Update (e.g. timeouts-only) arrives with the unpinned computeds
 // unknown; persisting the plan verbatim leaves state unknown, which Terraform rejects.
 func TestUpdateNoMutableChangeReReadsResolvesComputeds(t *testing.T) {
@@ -1032,6 +1065,20 @@ func TestUpdateVersionNonNumericRejected(t *testing.T) {
 				t.Errorf("an uninterpretable version must issue no REST calls, got %+v", capRT.reqs)
 			}
 		})
+	}
+}
+
+func TestModifyPlanVersionDowngradeRejected(t *testing.T) {
+	ctx := t.Context()
+	resp := driveModifyPlan(t, ctx,
+		map[string]tftypes.Value{"version": strRaw("17")},
+		map[string]tftypes.Value{"version": strRaw("16")},
+	)
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("version downgrade must be rejected at plan time")
+	}
+	if !diagHasSummaryOnPath(resp.Diagnostics, "Unsupported postgres version change", path.Root("version")) {
+		t.Errorf("downgrade rejection must be attribute-scoped to version, got %+v", resp.Diagnostics)
 	}
 }
 

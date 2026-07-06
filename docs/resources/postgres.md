@@ -119,6 +119,26 @@ Read-Only:
 - `id` (String) ID of the firewall rule
 - `port` (Number) Port for the Postgres firewall rule
 
+## Destroying with drifted configuration
+
+`terraform destroy` defaults to `-refresh=true`, which re-plans the current
+configuration against refreshed state before deleting. When the configuration has
+drifted from the server, that pre-destroy plan is evaluated as a normal update, so
+the same plan-time guards apply and can reject the destroy with a plan-time error.
+The most common trigger is `version`: after an in-place major upgrade the server
+reports a newer major than a `version` still pinned to the old one in configuration
+(often a variable default), so the pre-destroy plan reads as an unsupported
+downgrade. The read replica and parent guards reject a drifted pre-destroy plan the
+same way.
+
+This is expected; the provider keeps rejecting unsupported changes even on the way
+to a destroy. To proceed, either reconcile the drifted argument the error names (for
+`version`, set it to the server's current major; for an argument a read replica or
+restore inherits, remove it from the configuration), or run
+`terraform destroy -refresh=false`, which skips the pre-destroy refresh and deletes
+without re-planning the stale configuration (`terraform plan -destroy -refresh=false`
+previews the same without deleting).
+
 ## Import
 
 Import is supported using the following syntax:

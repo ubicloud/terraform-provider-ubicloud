@@ -255,6 +255,26 @@ func TestUpdateMaintenanceWindowWithVersionRejected(t *testing.T) {
 	}
 }
 
+func TestModifyPlanVersionWithMaintenanceWindowRejected(t *testing.T) {
+	ctx := t.Context()
+	resp := driveModifyPlan(t, ctx,
+		map[string]tftypes.Value{"version": strRaw("16"), "maintenance_window_start_at": numRaw(3)},
+		map[string]tftypes.Value{"version": strRaw("17"), "maintenance_window_start_at": numRaw(5)},
+	)
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("version + maintenance-window change must be rejected at plan time")
+	}
+	found := false
+	for _, d := range resp.Diagnostics.Errors() {
+		if strings.Contains(d.Detail(), "maintenance_window_start_at") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("diagnostic must name maintenance_window_start_at; got %+v", resp.Diagnostics.Errors())
+	}
+}
+
 func TestUpdateMaintenanceWindowBeforeRename(t *testing.T) {
 	ctx := t.Context()
 	capRT, resp := runUpdate(t, ctx,
@@ -273,6 +293,33 @@ func TestUpdateMaintenanceWindowBeforeRename(t *testing.T) {
 	}
 	if d[1].Method != http.MethodPost || !strings.HasSuffix(d[1].Path, "/postgres/tf-acc-pg/rename") {
 		t.Errorf("call[1] = %s %s, want rename last", d[1].Method, d[1].Path)
+	}
+}
+
+// A window-only change is a real mutation, not the config-null-tags phantom, so ModifyPlan
+// must not repin the unpinned computeds; state must stay unknown for Update to resolve.
+func TestModifyPlanMaintenanceWindowChangeNotAbsorbed(t *testing.T) {
+	ctx := t.Context()
+	state := map[string]tftypes.Value{
+		"size":                        strRaw("m8gd.large"),
+		"storage_size":                numRaw(64),
+		"maintenance_window_start_at": numRaw(3),
+	}
+	plan := withUnknownComputeds(t, ctx, map[string]tftypes.Value{
+		"size":                        strRaw("m8gd.large"),
+		"storage_size":                numRaw(64),
+		"maintenance_window_start_at": numRaw(5),
+	})
+	resp := driveModifyPlan(t, ctx, state, plan)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diags: %+v", resp.Diagnostics)
+	}
+	var out resource_postgres.PostgresModel
+	if diags := resp.Plan.Get(ctx, &out); diags.HasError() {
+		t.Fatalf("plan get: %+v", diags)
+	}
+	if !out.State.IsUnknown() {
+		t.Errorf("state computed = %v, want still unknown (a window change must not trigger the phantom repin)", out.State)
 	}
 }
 
