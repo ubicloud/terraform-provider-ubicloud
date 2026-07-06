@@ -64,7 +64,8 @@ func (r *postgresResource) ModifyPlan(ctx context.Context, req resource.ModifyPl
 				summary, detail := postgresParentInheritedError(name)
 				resp.Diagnostics.AddAttributeError(path.Root(name), summary, detail)
 			}
-		case postgresPrimaryMissingSize(config.Parent, config.Size):
+		case !postgresHasRestoreTarget(&config) && postgresPrimaryMissingSize(config.Parent, config.Size):
+			// A restore takes size from its source; skipping avoids a second, misleading error.
 			resp.Diagnostics.AddAttributeError(
 				path.Root("size"),
 				"Missing size for primary postgres database",
@@ -160,8 +161,8 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 	// resource must persist tags=null or the next plan phantoms (see the ModifyPlan re-pin).
 	tagsUnmanaged := state.Tags.IsNull() || state.Tags.IsUnknown()
 
-	// Backstops an interpolation that resolved to whitespace.
-	if postgresParentBlank(state.Parent) {
+	// Backstops an interpolation that resolved to whitespace; the restore path has its own guard.
+	if !postgresHasRestoreTarget(&state) && postgresParentBlank(state.Parent) {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("parent"),
 			"Blank parent",
@@ -180,11 +181,15 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 	opCtx, cancel := context.WithTimeout(ctx, createTimeout)
 	defer cancel()
 
+	// restore is checked first: a restore also sets parent; only read_replica differs in response.
 	// Stamp before endpoint selection so every adopt path has a valid non-zero lower bound.
 	dispatchAt := time.Now()
 	var postgresd *ubicloud_client.PostgresDatabase
 	var diags diag.Diagnostics
 	switch {
+	case postgresHasRestoreTarget(&state):
+		tflog.Debug(ctx, fmt.Sprintf("Restoring postgres database: %s (source %s, restore_target %s)", postgresResourceLogIdentifier(&state), state.Parent.ValueString(), state.RestoreTarget.ValueString()))
+		postgresd, diags = r.createPostgresRestore(opCtx, &state)
 	case postgresHasParent(&state):
 		tflog.Debug(ctx, fmt.Sprintf("Creating postgres read replica: %s (parent %s)", postgresResourceLogIdentifier(&state), state.Parent.ValueString()))
 		postgresd, diags = r.createPostgresReadReplica(opCtx, &state)

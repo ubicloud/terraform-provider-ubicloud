@@ -57,6 +57,23 @@ func assertNoPost(t *testing.T, capRT *captureRT) {
 	}
 }
 
+func TestCreateDispatchesRestoreOnRestoreTarget(t *testing.T) {
+	ctx := context.Background()
+	r, capRT := newCapturingPostgresResource(t)
+	capRT.detailState = "running"
+	resp := driveCreate(t, ctx, r, map[string]tftypes.Value{
+		"restore_target": strRaw("2026-06-24T11:00:00Z"),
+		"parent":         strRaw("tf-acc-src"),
+	})
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diags: %+v", resp.Diagnostics)
+	}
+	d := capRT.dispatchReqs()
+	if len(d) != 1 || d[0].Method != http.MethodPost || !strings.HasSuffix(d[0].Path, "/postgres/tf-acc-src/restore") {
+		t.Fatalf("dispatch = %+v, want one POST .../postgres/tf-acc-src/restore", d)
+	}
+}
+
 func TestCreateDispatchesReadReplicaOnParent(t *testing.T) {
 	ctx := context.Background()
 	r, capRT := newCapturingPostgresResource(t)
@@ -70,6 +87,27 @@ func TestCreateDispatchesReadReplicaOnParent(t *testing.T) {
 	d := capRT.dispatchReqs()
 	if len(d) != 1 || d[0].Method != http.MethodPost || !strings.HasSuffix(d[0].Path, "/postgres/tf-acc-src/read-replica") {
 		t.Fatalf("dispatch = %+v, want one POST .../postgres/tf-acc-src/read-replica", d)
+	}
+}
+
+// A restore also names parent as its source, so restore must win when both are set.
+func TestCreateDispatchPrefersRestoreOverParent(t *testing.T) {
+	ctx := context.Background()
+	r, capRT := newCapturingPostgresResource(t)
+	capRT.detailState = "running"
+	resp := driveCreate(t, ctx, r, map[string]tftypes.Value{
+		"restore_target": strRaw("2026-06-24T11:00:00Z"),
+		"parent":         strRaw("tf-acc-src"),
+	})
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diags: %+v", resp.Diagnostics)
+	}
+	d := capRT.dispatchReqs()
+	if len(d) != 1 || !strings.HasSuffix(d[0].Path, "/postgres/tf-acc-src/restore") {
+		t.Fatalf("dispatch = %+v, want restore to win over the read-replica path", d)
+	}
+	if strings.HasSuffix(d[0].Path, "/read-replica") {
+		t.Errorf("a plan with both restore_target and parent must NOT take the read-replica path: %s", d[0].Path)
 	}
 }
 
@@ -130,6 +168,22 @@ func TestCreateBoundsStuckReadReplicaPostByCreateTimeout(t *testing.T) {
 	}
 	if !resp.Diagnostics.HasError() {
 		t.Fatal("expected a bounded create error from a stuck read-replica POST, got success")
+	}
+	if got := resp.Diagnostics.Errors()[0].Summary(); !strings.Contains(got, "Timeout while creating") {
+		t.Fatalf("summary = %q, want a create-timeout classification", got)
+	}
+}
+
+func TestCreateBoundsStuckRestorePostByCreateTimeout(t *testing.T) {
+	postPath, resp := runStuckPostCreate(t, map[string]tftypes.Value{
+		"restore_target": strRaw("2026-06-24T11:00:00Z"),
+		"parent":         strRaw("tf-acc-src"),
+	})
+	if !strings.HasSuffix(postPath, "/postgres/tf-acc-src/restore") {
+		t.Fatalf("stuck POST path = %q, want the restore endpoint", postPath)
+	}
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a bounded create error from a stuck restore POST, got success")
 	}
 	if got := resp.Diagnostics.Errors()[0].Summary(); !strings.Contains(got, "Timeout while creating") {
 		t.Fatalf("summary = %q, want a create-timeout classification", got)
@@ -458,4 +512,22 @@ func TestCreateReadReplicaUnexpectedStatus(t *testing.T) {
 	if got := resp.Diagnostics.Errors()[0].Summary(); got != "Unexpected HTTP status code creating postgres read replica" {
 		t.Fatalf("summary = %q, want Unexpected HTTP status code creating postgres read replica", got)
 	}
+}
+
+// A blank restore source must error before ever addressing POST .../postgres//restore.
+func TestCreateRestoreRejectsBlankParent(t *testing.T) {
+	ctx := context.Background()
+	r, capRT := newCapturingPostgresResource(t)
+	capRT.detailState = "running" // keep the test bounded if the guard ever regresses
+	resp := driveCreate(t, ctx, r, map[string]tftypes.Value{
+		"restore_target": strRaw("2026-06-24T11:00:00Z"),
+		"parent":         strRaw("   "), // blank source
+	})
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected an error for a restore with a blank source, got success")
+	}
+	if got := resp.Diagnostics.Errors()[0].Summary(); got != "Missing restore source" {
+		t.Fatalf("summary = %q, want Missing restore source", got)
+	}
+	assertNoPost(t, capRT)
 }

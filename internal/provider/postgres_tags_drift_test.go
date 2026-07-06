@@ -124,6 +124,28 @@ func TestReadPostImportRefreshHydratesServerTags(t *testing.T) {
 	}
 }
 
+// A restore inherits the parent's tags server-side; a config-null restore must still persist tags=null.
+func TestCreateRestorePreservesConfigNullTags(t *testing.T) {
+	ctx := t.Context()
+	r, capRT := newCapturingPostgresResource(t)
+	capRT.detailState = "running" // Create blocks until running; sample tags=[{team,data}] = inherited
+
+	resp := driveCreate(t, ctx, r, map[string]tftypes.Value{
+		"restore_target": strRaw("2026-06-24T11:00:00Z"),
+		"parent":         strRaw("tf-acc-src"),
+	})
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diags: %+v", resp.Diagnostics)
+	}
+	var out resource_postgres.PostgresModel
+	if diags := resp.State.Get(ctx, &out); diags.HasError() {
+		t.Fatalf("state get: %+v", diags)
+	}
+	if !out.Tags.IsNull() {
+		t.Errorf("restore with config-null tags must persist tags=null (no inherited-tag phantom), got %v", out.Tags)
+	}
+}
+
 func TestCreateRoundTripsExplicitTags(t *testing.T) {
 	ctx := t.Context()
 	r, capRT := newCapturingPostgresResource(t)
