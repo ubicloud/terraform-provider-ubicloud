@@ -31,6 +31,14 @@ resource "ubicloud_postgres" "example" {
   name         = "pg-example"
   size         = "standard-4"
   storage_size = 512
+
+  # Tags are managed only when configured here. If you omit this block, the provider
+  # does not track server-side tags, so tags added out of band (including those a
+  # point-in-time restore inherits from its parent) stay invisible and never cause a
+  # perpetual plan diff. Configure tags to manage and reconcile them.
+  tags = [
+    { key = "environment", value = "production" },
+  ]
 }
 ```
 
@@ -97,9 +105,8 @@ Required:
 
 Optional:
 
-- `create` (String)
-- `delete` (String)
-- `update` (String)
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
 
 
 <a id="nestedatt--firewall_rules"></a>
