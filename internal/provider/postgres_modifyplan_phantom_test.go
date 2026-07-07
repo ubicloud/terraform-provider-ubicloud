@@ -46,6 +46,21 @@ func driveModifyPlanConfig(t *testing.T, ctx context.Context, configOver, stateO
 	return resp
 }
 
+// driveModifyPlanCreate runs ModifyPlan on the create path: a null prior State (the create
+// signal) and a bare postgresRaw Config, with no Plan seeded.
+func driveModifyPlanCreate(t *testing.T, ctx context.Context, configOver map[string]tftypes.Value) *resource.ModifyPlanResponse {
+	t.Helper()
+	schema := resource_postgres.PostgresResourceSchema(ctx)
+	objType := postgresResourceSchemaObjType(t, ctx)
+	req := resource.ModifyPlanRequest{
+		State:  tfsdk.State{Schema: schema, Raw: tftypes.NewValue(objType, nil)},
+		Config: tfsdk.Config{Schema: schema, Raw: postgresRaw(t, ctx, configOver)},
+	}
+	resp := &resource.ModifyPlanResponse{}
+	(&postgresResource{}).ModifyPlan(ctx, req, resp)
+	return resp
+}
+
 // Prior state holds server tags while config omits them (post-import or un-managed); the
 // plan pins USFU attributes to prior and leaves unpinned computeds unknown, as the framework would.
 func importedConfigNullTagsFixture(t *testing.T, ctx context.Context) (stateOver, planOver map[string]tftypes.Value) {

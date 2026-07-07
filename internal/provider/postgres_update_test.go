@@ -699,20 +699,10 @@ func TestUpdateVersionReadbackKeepsRequestedVersion(t *testing.T) {
 	}
 }
 
-// driveModifyPlan runs ModifyPlan on the update path (non-null prior state).
+// driveModifyPlan runs ModifyPlan on the update path (non-null prior state), with Config == Plan.
 func driveModifyPlan(t *testing.T, ctx context.Context, stateOver, planOver map[string]tftypes.Value) *resource.ModifyPlanResponse {
 	t.Helper()
-	schema := resource_postgres.PostgresResourceSchema(ctx)
-	stateRaw := mkPGRaw(t, ctx, stateOver)
-	planRaw := mkPGRaw(t, ctx, planOver)
-	req := resource.ModifyPlanRequest{
-		Config: tfsdk.Config{Schema: schema, Raw: planRaw},
-		State:  tfsdk.State{Schema: schema, Raw: stateRaw},
-		Plan:   tfsdk.Plan{Schema: schema, Raw: planRaw},
-	}
-	resp := &resource.ModifyPlanResponse{Plan: tfsdk.Plan{Schema: schema, Raw: planRaw}}
-	(&postgresResource{}).ModifyPlan(ctx, req, resp)
-	return resp
+	return driveModifyPlanConfig(t, ctx, planOver, stateOver, planOver)
 }
 
 func TestModifyPlanVersionMultiMajorRejected(t *testing.T) {

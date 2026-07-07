@@ -9,8 +9,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
@@ -84,18 +82,8 @@ func TestPostgresHasRestoreTarget(t *testing.T) {
 // restore config (parent + restore_target, no size).
 func TestPostgresModifyPlanRestore(t *testing.T) {
 	ctx := t.Context()
-	r := &postgresResource{}
-	schema := resource_postgres.PostgresResourceSchema(ctx)
-	objType := postgresResourceSchemaObjType(t, ctx)
-
 	modifyCreate := func(overrides map[string]tftypes.Value) diag.Diagnostics {
-		req := resource.ModifyPlanRequest{
-			State:  tfsdk.State{Schema: schema, Raw: tftypes.NewValue(objType, nil)}, // null state = create
-			Config: tfsdk.Config{Schema: schema, Raw: postgresRaw(t, ctx, overrides)},
-		}
-		resp := &resource.ModifyPlanResponse{}
-		r.ModifyPlan(ctx, req, resp)
-		return resp.Diagnostics
+		return driveModifyPlanCreate(t, ctx, overrides).Diagnostics
 	}
 
 	target := tftypes.NewValue(tftypes.String, "2026-06-24T11:00:00Z")

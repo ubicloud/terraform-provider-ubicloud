@@ -9,19 +9,13 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/ubicloud_client"
 )
 
 // newTestPostgresResource drives the real generated client against an httptest
 // backend (a network-boundary fake), never a stub of the client.
 func newTestPostgresResource(t *testing.T, srv *httptest.Server) *postgresResource {
 	t.Helper()
-	client, err := ubicloud_client.NewClientWithResponses(srv.URL)
-	if err != nil {
-		t.Fatalf("NewClientWithResponses: %v", err)
-	}
-	return &postgresResource{uc: &UbicloudClient{client: client}}
+	return &postgresResource{uc: offlineClient(t, srv)}
 }
 
 // detailsHandler serves the detailed GET in the state next() returns; "" answers a 404.

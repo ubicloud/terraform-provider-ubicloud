@@ -123,16 +123,7 @@ func postgresResourceSchemaObjType(t *testing.T, ctx context.Context) tftypes.Ob
 
 func postgresRaw(t *testing.T, ctx context.Context, overrides map[string]tftypes.Value) tftypes.Value {
 	t.Helper()
-	objType := postgresResourceSchemaObjType(t, ctx)
-	vals := make(map[string]tftypes.Value, len(objType.AttributeTypes))
-	for name, typ := range objType.AttributeTypes {
-		if v, ok := overrides[name]; ok {
-			vals[name] = v
-		} else {
-			vals[name] = tftypes.NewValue(typ, nil)
-		}
-	}
-	return tftypes.NewValue(objType, vals)
+	return mkRawFromSchema(postgresResourceSchemaObjType(t, ctx), overrides)
 }
 
 // pgNullStateRaw is the create-time State.Raw the framework seeds (server_createresource.go): a null
@@ -200,16 +191,9 @@ func TestPostgresModifyPlanRequiresSizeOnCreate(t *testing.T) {
 	ctx := t.Context()
 	r := &postgresResource{}
 	schema := resource_postgres.PostgresResourceSchema(ctx)
-	objType := postgresResourceSchemaObjType(t, ctx)
 
 	modifyCreate := func(overrides map[string]tftypes.Value) diag.Diagnostics {
-		req := resource.ModifyPlanRequest{
-			State:  tfsdk.State{Schema: schema, Raw: tftypes.NewValue(objType, nil)}, // null state = create
-			Config: tfsdk.Config{Schema: schema, Raw: postgresRaw(t, ctx, overrides)},
-		}
-		resp := &resource.ModifyPlanResponse{}
-		r.ModifyPlan(ctx, req, resp)
-		return resp.Diagnostics
+		return driveModifyPlanCreate(t, ctx, overrides).Diagnostics
 	}
 
 	if d := modifyCreate(nil); !d.HasError() {

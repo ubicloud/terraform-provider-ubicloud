@@ -83,13 +83,7 @@ func restrictOverrides(objType tftypes.Object, ids map[string]tftypes.Value) map
 // a nil body is not a 404, so no RemoveResource.
 func TestReadFailsClosedOnEmptyBodyNonPg(t *testing.T) {
 	ctx := t.Context()
-	ids := map[string]tftypes.Value{
-		"project_id":         strVal("pjx"),
-		"location":           strVal("aws-us-east-1"),
-		"name":               strVal("tf-acc-empty"),
-		"id":                 strVal("idx"),
-		"firewall_reference": strVal("tf-acc-fw"),
-	}
+	ids := genericResourceIDs("tf-acc-empty")
 	cases := []struct {
 		name    string
 		res     resource.Resource
@@ -124,12 +118,12 @@ func TestReadFailsClosedOnEmptyBodyNonPg(t *testing.T) {
 func TestCreateFailsClosedOnEmptyBodyNonPg(t *testing.T) {
 	ctx := t.Context()
 	ids := map[string]tftypes.Value{
-		"project_id":         strVal("pjx"),
-		"location":           strVal("aws-us-east-1"),
-		"name":               strVal("tf-acc-empty"),
-		"firewall_reference": strVal("tf-acc-fw"),
-		"cidr":               strVal("1.2.3.0/24"),
-		"public_key":         strVal("ssh-ed25519 AAAA"),
+		"project_id":         strRaw("pjx"),
+		"location":           strRaw("aws-us-east-1"),
+		"name":               strRaw("tf-acc-empty"),
+		"firewall_reference": strRaw("tf-acc-fw"),
+		"cidr":               strRaw("1.2.3.0/24"),
+		"public_key":         strRaw("ssh-ed25519 AAAA"),
 	}
 	cases := []struct {
 		name    string
@@ -159,13 +153,7 @@ func TestCreateFailsClosedOnEmptyBodyNonPg(t *testing.T) {
 
 func TestDatasourceReadFailsClosedOnEmptyBodyNonPg(t *testing.T) {
 	ctx := t.Context()
-	ids := map[string]tftypes.Value{
-		"project_id":         strVal("pjx"),
-		"location":           strVal("aws-us-east-1"),
-		"name":               strVal("tf-acc-empty"),
-		"id":                 strVal("idx"),
-		"firewall_reference": strVal("tf-acc-fw"),
-	}
+	ids := genericResourceIDs("tf-acc-empty")
 	cases := []struct {
 		name    string
 		ds      datasource.DataSource

@@ -51,6 +51,18 @@ func mkRawFromSchema(objType tftypes.Object, overrides map[string]tftypes.Value)
 	return tftypes.NewValue(objType, vals)
 }
 
+// genericResourceIDs are the string identity attributes shared across vm/firewall/firewall_rule/
+// private_subnet/project; mkRawFromSchema/restrictOverrides trim them to a given schema's subset.
+func genericResourceIDs(name string) map[string]tftypes.Value {
+	return map[string]tftypes.Value{
+		"project_id":         strRaw("pjx"),
+		"location":           strRaw("aws-us-east-1"),
+		"name":               strRaw(name),
+		"id":                 strRaw("idx"),
+		"firewall_reference": strRaw("tf-acc-fw"),
+	}
+}
+
 func resourceSchemaAndType(t *testing.T, ctx context.Context, r resource.Resource) (rschema.Schema, tftypes.Object) {
 	t.Helper()
 	var sresp resource.SchemaResponse
@@ -82,8 +94,6 @@ func driveResourceCreate(t *testing.T, ctx context.Context, r resource.Resource,
 	return resp
 }
 
-func strVal(s string) tftypes.Value { return tftypes.NewValue(tftypes.String, s) }
-
 func setResourceClient(r resource.Resource, uc *UbicloudClient) {
 	switch res := r.(type) {
 	case *vmResource:
@@ -105,13 +115,7 @@ func setResourceClient(r resource.Resource, uc *UbicloudClient) {
 // the branch is duplicated per resource (not shared), so each of the five is exercised.
 func TestReadNonNotFoundErrorsAndPreservesState(t *testing.T) {
 	ctx := t.Context()
-	ids := map[string]tftypes.Value{
-		"project_id":         strVal("pjx"),
-		"location":           strVal("aws-us-east-1"),
-		"name":               strVal("tf-acc-drift"),
-		"id":                 strVal("idx"),
-		"firewall_reference": strVal("tf-acc-fw"),
-	}
+	ids := genericResourceIDs("tf-acc-drift")
 	cases := []struct {
 		name    string
 		res     resource.Resource
@@ -172,10 +176,10 @@ func TestReadFirewallNotFoundEmitsDebugLog(t *testing.T) {
 	srv := statusServer(t, http.StatusNotFound, `{"error":{"code":404,"message":"not found"}}`)
 	r := &firewallResource{uc: offlineClient(t, srv)}
 	resp, _ := driveResourceRead(t, ctx, r, map[string]tftypes.Value{
-		"project_id": strVal("pjx"),
-		"location":   strVal("aws-us-east-1"),
-		"name":       strVal("tf-acc-fw"),
-		"id":         strVal("idx"),
+		"project_id": strRaw("pjx"),
+		"location":   strRaw("aws-us-east-1"),
+		"name":       strRaw("tf-acc-fw"),
+		"id":         strRaw("idx"),
 	})
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("Read on a 404 must not error: %+v", resp.Diagnostics)
@@ -225,10 +229,10 @@ func TestCreateFirewallRuleRejectsMultiRuleResult(t *testing.T) {
 	srv := firewallRuleArrayServer(t, 2)
 	r := &firewallRuleResource{uc: offlineClient(t, srv)}
 	resp := driveResourceCreate(t, ctx, r, map[string]tftypes.Value{
-		"project_id":         strVal("pjx"),
-		"location":           strVal("aws-us-east-1"),
-		"firewall_reference": strVal("tf-acc-fw"),
-		"cidr":               strVal("1.2.3.0/24"),
+		"project_id":         strRaw("pjx"),
+		"location":           strRaw("aws-us-east-1"),
+		"firewall_reference": strRaw("tf-acc-fw"),
+		"cidr":               strRaw("1.2.3.0/24"),
 	})
 	if !resp.Diagnostics.HasError() {
 		t.Fatal("a multi-rule create result must error, got success")
@@ -247,10 +251,10 @@ func TestCreateFirewallRuleMapsObjectResult(t *testing.T) {
 	srv := statusServer(t, http.StatusOK, `{"id":"fr0","cidr":"1.2.3.0/24","description":"d","port_range":"5432..5432","protocol":"tcp"}`)
 	r := &firewallRuleResource{uc: offlineClient(t, srv)}
 	resp := driveResourceCreate(t, ctx, r, map[string]tftypes.Value{
-		"project_id":         strVal("pjx"),
-		"location":           strVal("aws-us-east-1"),
-		"firewall_reference": strVal("tf-acc-fw"),
-		"cidr":               strVal("1.2.3.0/24"),
+		"project_id":         strRaw("pjx"),
+		"location":           strRaw("aws-us-east-1"),
+		"firewall_reference": strRaw("tf-acc-fw"),
+		"cidr":               strRaw("1.2.3.0/24"),
 	})
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("a bare-object create must succeed: %+v", resp.Diagnostics)

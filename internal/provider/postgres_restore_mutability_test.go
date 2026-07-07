@@ -9,7 +9,6 @@ import (
 	"github.com/ubicloud/terraform-provider-ubicloud/internal/generated/resource_postgres"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
@@ -60,18 +59,8 @@ func TestPostgresMutableAttrsDropParentConflict(t *testing.T) {
 
 func TestModifyPlanCreateRejectsInheritedInputsWithParent(t *testing.T) {
 	ctx := t.Context()
-	r := &postgresResource{}
-	schema := resource_postgres.PostgresResourceSchema(ctx)
-	objType := postgresResourceSchemaObjType(t, ctx)
-
 	modifyCreate := func(overrides map[string]tftypes.Value) resource.ModifyPlanResponse {
-		req := resource.ModifyPlanRequest{
-			State:  tfsdk.State{Schema: schema, Raw: tftypes.NewValue(objType, nil)}, // null state = create
-			Config: tfsdk.Config{Schema: schema, Raw: postgresRaw(t, ctx, overrides)},
-		}
-		resp := resource.ModifyPlanResponse{}
-		r.ModifyPlan(ctx, req, &resp)
-		return resp
+		return *driveModifyPlanCreate(t, ctx, overrides)
 	}
 
 	parent := tftypes.NewValue(tftypes.String, "tf-acc-src")
