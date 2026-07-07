@@ -763,6 +763,23 @@ func (r *postgresResource) Update(ctx context.Context, req resource.UpdateReques
 		model.MaintenanceWindowStartAt = plan.MaintenanceWindowStartAt
 	}
 
+	// USFU pins these reads to prior on every in-place update (v1.19.0 copies a known null too),
+	// so the plan value is known here; hold it so the post-apply GET cannot contradict the plan
+	// (the restore window advances every second, else tripping the inconsistent-result check). A
+	// held null lags one refresh, then freshens. The guard mirrors the size holds defensively.
+	if !plan.FirewallRules.IsUnknown() {
+		model.FirewallRules = plan.FirewallRules
+	}
+	if !plan.Password.IsUnknown() {
+		model.Password = plan.Password
+	}
+	if !plan.EarliestRestoreTime.IsUnknown() {
+		model.EarliestRestoreTime = plan.EarliestRestoreTime
+	}
+	if !plan.LatestRestoreTime.IsUnknown() {
+		model.LatestRestoreTime = plan.LatestRestoreTime
+	}
+
 	// An unpinned null-prior companion (imported at creating-state) defaults to the empty map.
 	ensurePostgresConfigKnown(&model)
 

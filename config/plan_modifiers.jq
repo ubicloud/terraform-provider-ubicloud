@@ -97,9 +97,7 @@ def add_validators($existing; $news):
   elif .name == "id" then .string.plan_modifiers = [usfu("stringplanmodifier")]
   elif .name == "created_at" then .string.plan_modifiers = [usfu("stringplanmodifier")]
   elif .name == "ca_certificates" then .string.plan_modifiers = [usfu("stringplanmodifier")]
-  # username is the constant "postgres", so pin it. The convergence-sensitive reads (hostname,
-  # connection_string, vm_size, password, fallback_active, firewall_rules) stay UNpinned on
-  # purpose: pinning would show a stale value on a plan about to change it.
+  # username is the serializer's constant "postgres", so pin it.
   elif .name == "username" then .string.plan_modifiers = [usfu("stringplanmodifier")]
   elif .name == "ha_type" then .string.plan_modifiers = [usfu("stringplanmodifier")]
   # size and storage_size are computed_optional (a replica inherits them): pin so an omitted
@@ -118,6 +116,14 @@ def add_validators($existing; $news):
   elif .name == "tags" then .list_nested.plan_modifiers = [usfu("listplanmodifier")]
   elif .name == "pg_config" then .map.plan_modifiers = [usfu("mapplanmodifier")]
   elif .name == "pgbouncer_config" then .map.plan_modifiers = [usfu("mapplanmodifier")]
+  # Reads an in-place update never mutates: pin them (with the Update-tail hold) so a routine
+  # plan does not churn them to "known after apply"; an out-of-band edit still shows in the
+  # refresh-drift preamble. The restore window moves every second, so its hold is load-bearing.
+  # hostname/connection_string and the convergence signals stay UNpinned to render fresh reads.
+  elif .name == "firewall_rules" then .list_nested.plan_modifiers = [usfu("listplanmodifier")]
+  elif .name == "password" then .string.plan_modifiers = [usfu("stringplanmodifier")]
+  elif .name == "earliest_restore_time" then .string.plan_modifiers = [usfu("stringplanmodifier")]
+  elif .name == "latest_restore_time" then .string.plan_modifiers = [usfu("stringplanmodifier")]
   else . end
 )
 # ConflictsWith(parent) goes only on the never-mutated create-only inputs (flavor and the

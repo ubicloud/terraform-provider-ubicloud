@@ -160,6 +160,9 @@ func TestPostgresResourceUseStateForUnknown(t *testing.T) {
 		"tags", "pg_config", "pgbouncer_config", "maintenance_window_start_at",
 		// username is the serializer's literal constant "postgres", so pinning is always correct.
 		"username",
+		// Reads an in-place update never mutates; pinned with an Update-tail hold to drop
+		// every-plan churn (the restore window moves every second, so the hold is required).
+		"password", "firewall_rules", "earliest_restore_time", "latest_restore_time",
 	}
 	for _, name := range pinned {
 		attr, ok := s.Attributes[name]
@@ -185,12 +188,12 @@ func TestPostgresResourceUseStateForUnknown(t *testing.T) {
 		}
 	}
 
-	// Lifecycle-varying: a rename moves hostname/connection_string, a resize converges the actual sizes
-	// (target_* carry the request), failover swaps fallback_active, password/firewall_rules mutate out of band.
+	// Lifecycle-varying: a rename moves hostname/connection_string, a resize converges the actual
+	// sizes (target_* carry the request), failover swaps fallback_active.
 	floating := []string{
-		"hostname", "connection_string", "password", "vm_size", "storage_size_gib",
+		"hostname", "connection_string", "vm_size", "storage_size_gib",
 		"target_vm_size", "target_storage_size_gib", "target_version",
-		"target_server_count", "fallback_active", "firewall_rules",
+		"target_server_count", "fallback_active",
 	}
 	for _, name := range floating {
 		attr, ok := s.Attributes[name]

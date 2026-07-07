@@ -270,16 +270,16 @@ func mkPGRaw(t *testing.T, ctx context.Context, over map[string]tftypes.Value) t
 	return postgresRaw(t, ctx, base)
 }
 
-// postgresUnpinnedComputeds are the computed attributes with no UseStateForUnknown modifier;
-// the framework marks each unknown on every update plan, so realistic plans carry them unknown.
+// postgresUnpinnedComputeds have no UseStateForUnknown, so the framework marks each unknown on
+// every update plan. The USFU-pinned reads (password, firewall_rules, the restore times) are
+// omitted: USFU resolves them to prior (a known value, possibly null) before Update sees the plan.
 var postgresUnpinnedComputeds = []string{
 	"state", "vm_size", "storage_size_gib", "target_vm_size", "target_storage_size_gib",
-	"target_version", "target_server_count", "connection_string", "hostname", "password",
-	"earliest_restore_time", "latest_restore_time", "fallback_active", "firewall_rules",
+	"target_version", "target_server_count", "connection_string", "hostname", "fallback_active",
 }
 
 // withUnknownComputeds reproduces the framework-realistic update plan (postgresRaw's all-null
-// default would hide unknown-handling bugs).
+// default would hide unknown-handling bugs); a value the caller already set is left as-is.
 func withUnknownComputeds(t *testing.T, ctx context.Context, over map[string]tftypes.Value) map[string]tftypes.Value {
 	t.Helper()
 	objType := postgresResourceSchemaObjType(t, ctx)
@@ -769,8 +769,10 @@ func TestUpdateNoMutableChangeReReadsResolvesComputeds(t *testing.T) {
 	if diags := resp.State.Get(ctx, &out); diags.HasError() {
 		t.Fatalf("state get: %+v", diags)
 	}
-	if got := out.Password.ValueString(); got != "supersecret" {
-		t.Errorf("password = %q, want hydrated supersecret", got)
+	// password is pinned: USFU copies the plan's prior (null in this fixture), so the tail-hold
+	// keeps null rather than adopting the read-back. connection_string/state stay unpinned.
+	if !out.Password.IsNull() {
+		t.Errorf("password = %q, want held null (pinned, prior null in this fixture)", out.Password.ValueString())
 	}
 	if got := out.ConnectionString.ValueString(); got != "postgres://postgres:supersecret@:5432/postgres" {
 		t.Errorf("connection_string = %q, want hydrated value", got)
@@ -902,6 +904,103 @@ func TestUpdateStorageSizeUnknownKeepsReadback(t *testing.T) {
 	}
 	if got := out.StorageSize.ValueInt64(); got != 118 {
 		t.Errorf("state storage_size = %d, want read-back 118 (guard skips re-pin when plan is unknown)", got)
+	}
+}
+
+// The tail-hold keeps each pinned read at its plan value when the post-apply GET drifts (an
+// out-of-band firewall/password edit, or the ever-moving restore window). Prior == plan models
+// the USFU pin a real tags-only plan carries. This checks the held assignment; the end-to-end
+// inconsistent-result prevention is exercised by the acceptance drift test (latest_restore_time).
+func TestUpdatePinnedReadsHeldAgainstDrift(t *testing.T) {
+	ctx := t.Context()
+	priorRules := rawFirewallRules(t, ctx, []map[string]tftypes.Value{{
+		"cidr":        strRaw("10.0.0.0/8"),
+		"description": strRaw("app"),
+		"id":          strRaw("fw0000000001"),
+		"port":        numRaw(5432),
+	}})
+	pinned := map[string]tftypes.Value{
+		"password":              strRaw("plan-secret"),
+		"earliest_restore_time": strRaw("2026-07-07T00:00:00Z"),
+		"latest_restore_time":   strRaw("2026-07-07T01:00:00Z"),
+		"firewall_rules":        priorRules,
+	}
+	state := map[string]tftypes.Value{"tags": rawTags(t, ctx, [][2]string{{"team", "data"}})}
+	plan := map[string]tftypes.Value{"tags": rawTags(t, ctx, [][2]string{{"team", "data"}, {"env", "prod"}})}
+	for k, v := range pinned {
+		state[k] = v
+		plan[k] = v
+	}
+
+	// The read-back drifts every pinned field: a rotated password, an advanced restore window, and
+	// an out-of-band firewall rule added (two rules, so a held one-element list is unambiguous).
+	drifted := sampleDetailedPostgresResponse()
+	drifted.Password = ptrTo("rotated-oob")
+	drifted.EarliestRestoreTime = ptrTo("2026-07-07T09:09:09Z")
+	drifted.LatestRestoreTime = "2026-07-07T10:10:10Z"
+	drifted.FirewallRules = append(drifted.FirewallRules, ubicloud_client.PostgresFirewallRule{
+		Id: "fw0000000002", Cidr: "0.0.0.0/0", Description: ptrTo("opened-oob"), Port: ptrTo(5432),
+	})
+	capRT := &captureRT{detailBody: &drifted}
+	r := newPostgresResourceWithRT(t, capRT)
+	resp := driveUpdate(t, ctx, r, state, plan)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diags: %+v", resp.Diagnostics)
+	}
+	if len(capRT.dispatchReqs()) != 1 {
+		t.Fatalf("want one PATCH for the tags change, got %+v", capRT.dispatchReqs())
+	}
+	var out resource_postgres.PostgresModel
+	if diags := resp.State.Get(ctx, &out); diags.HasError() {
+		t.Fatalf("state get: %+v", diags)
+	}
+	if got := out.Password.ValueString(); got != "plan-secret" {
+		t.Errorf("password = %q, want held plan-secret (not the rotated read-back)", got)
+	}
+	if got := out.EarliestRestoreTime.ValueString(); got != "2026-07-07T00:00:00Z" {
+		t.Errorf("earliest_restore_time = %q, want held plan value", got)
+	}
+	if got := out.LatestRestoreTime.ValueString(); got != "2026-07-07T01:00:00Z" {
+		t.Errorf("latest_restore_time = %q, want held plan value (window moves every read)", got)
+	}
+	if got := len(out.FirewallRules.Elements()); got != 1 {
+		t.Errorf("firewall_rules held count = %d, want 1 (the out-of-band add must not land in state)", got)
+	}
+}
+
+// A pre-backup primary reports earliest_restore_time = null; USFU copies that known null into the
+// plan (v1.19.0), so the tail-hold keeps null even when the post-apply GET has since filled it (a
+// first backup landed mid-apply). Holding the plan's null keeps the apply consistent; the next
+// refresh freshens. The guard must keep the null, not skip it and adopt the read-back.
+func TestUpdatePinnedReadsHeldNullPrior(t *testing.T) {
+	ctx := t.Context()
+	nullStr := tftypes.NewValue(tftypes.String, nil)
+	state := map[string]tftypes.Value{
+		"tags":                  rawTags(t, ctx, [][2]string{{"team", "data"}}),
+		"earliest_restore_time": nullStr,
+	}
+	plan := map[string]tftypes.Value{
+		"tags":                  rawTags(t, ctx, [][2]string{{"team", "data"}, {"env", "prod"}}),
+		"earliest_restore_time": nullStr,
+	}
+	// The read-back has since gained a backup: earliest is now a real timestamp.
+	filled := sampleDetailedPostgresResponse()
+	filled.EarliestRestoreTime = ptrTo("2026-07-07T12:00:00Z")
+	capRT := &captureRT{detailBody: &filled}
+	r := newPostgresResourceWithRT(t, capRT)
+	resp := driveUpdate(t, ctx, r, state, plan)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diags: %+v", resp.Diagnostics)
+	}
+	if len(capRT.dispatchReqs()) != 1 {
+		t.Fatalf("want one PATCH for the tags change, got %+v", capRT.dispatchReqs())
+	}
+	var out resource_postgres.PostgresModel
+	if diags := resp.State.Get(ctx, &out); diags.HasError() {
+		t.Fatalf("state get: %+v", diags)
+	}
+	if !out.EarliestRestoreTime.IsNull() {
+		t.Errorf("earliest_restore_time = %q, want held null (USFU pinned the null prior; the read-back must not win)", out.EarliestRestoreTime.ValueString())
 	}
 }
 

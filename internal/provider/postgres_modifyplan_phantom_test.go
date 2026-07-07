@@ -81,6 +81,17 @@ func importedConfigNullTagsFixture(t *testing.T, ctx context.Context) (stateOver
 		"primary":                     boolRaw(true),
 		"read_replica":                boolRaw(false),
 		"username":                    strRaw("postgres"),
+		// USFU-pinned read-only computeds: USFU copies prior into the plan before ModifyPlan runs,
+		// so the plan carries the prior value (never unknown), like the other pinned attributes.
+		"password":              strRaw("supersecret"),
+		"earliest_restore_time": strRaw("2026-07-02T00:00:00Z"),
+		"latest_restore_time":   strRaw("2026-07-02T01:00:00Z"),
+		"firewall_rules": rawFirewallRules(t, ctx, []map[string]tftypes.Value{{
+			"cidr":        strRaw("0.0.0.0/0"),
+			"description": strRaw("default"),
+			"id":          strRaw("fw0000000001"),
+			"port":        numRaw(5432),
+		}}),
 	}
 	cascade := map[string]tftypes.Value{
 		"state":                   strRaw("running"),
@@ -92,16 +103,7 @@ func importedConfigNullTagsFixture(t *testing.T, ctx context.Context) (stateOver
 		"target_server_count":     numRaw(1),
 		"connection_string":       strRaw("postgres://postgres:supersecret@pg.example.com:5432/postgres"),
 		"hostname":                strRaw("pg.example.com"),
-		"password":                strRaw("supersecret"),
-		"earliest_restore_time":   strRaw("2026-07-02T00:00:00Z"),
-		"latest_restore_time":     strRaw("2026-07-02T01:00:00Z"),
 		"fallback_active":         boolRaw(false),
-		"firewall_rules": rawFirewallRules(t, ctx, []map[string]tftypes.Value{{
-			"cidr":        strRaw("0.0.0.0/0"),
-			"description": strRaw("default"),
-			"id":          strRaw("fw0000000001"),
-			"port":        numRaw(5432),
-		}}),
 	}
 	stateOver = map[string]tftypes.Value{}
 	for k, v := range pinned {
