@@ -135,6 +135,14 @@ func postgresRaw(t *testing.T, ctx context.Context, overrides map[string]tftypes
 	return tftypes.NewValue(objType, vals)
 }
 
+// pgNullStateRaw is the create-time State.Raw the framework seeds (server_createresource.go): a null
+// object of the schema type, not the plan. Seeding it keeps a no-persist path's state null, so a
+// negative assertion checks resp.State.Raw.IsNull() rather than reading plan values back.
+func pgNullStateRaw(t *testing.T, ctx context.Context) tftypes.Value {
+	t.Helper()
+	return tftypes.NewValue(postgresResourceSchemaObjType(t, ctx), nil)
+}
+
 // An unknown parent/size defers to apply time; createPostgresPrimary catches one that
 // resolves empty.
 func TestPostgresPrimaryMissingSize(t *testing.T) {

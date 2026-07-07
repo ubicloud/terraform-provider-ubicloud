@@ -37,7 +37,7 @@ func driveCreate(t *testing.T, ctx context.Context, r *postgresResource, planOve
 	schema := resource_postgres.PostgresResourceSchema(ctx)
 	planRaw := mkPGRaw(t, ctx, planOver)
 	req := resource.CreateRequest{Plan: tfsdk.Plan{Schema: schema, Raw: planRaw}}
-	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: planRaw}}
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: pgNullStateRaw(t, ctx)}}
 	r.Create(ctx, req, resp)
 	return resp
 }
@@ -491,7 +491,7 @@ func TestCreateBoundsStuckPostByCreateTimeout(t *testing.T) {
 		"storage_size": numRaw(64),
 	})
 	req := resource.CreateRequest{Plan: tfsdk.Plan{Schema: schema, Raw: planRaw}}
-	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: planRaw}}
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: pgNullStateRaw(t, ctx)}}
 
 	done := make(chan struct{})
 	go func() {
@@ -505,6 +505,9 @@ func TestCreateBoundsStuckPostByCreateTimeout(t *testing.T) {
 		}
 		if got := resp.Diagnostics.Errors()[0].Summary(); !strings.Contains(got, "Timeout while creating") {
 			t.Fatalf("first-request timeout must be classified as a create timeout, got %q", got)
+		}
+		if !resp.State.Raw.IsNull() {
+			t.Errorf("a stuck POST the server never accepted must persist no state")
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("Create ignored its 100ms create timeout on a stuck POST (it hung)")
@@ -542,7 +545,7 @@ func TestCreateAdoptsCreatedPostgresOnStuckPostTimeout(t *testing.T) {
 		"storage_size": numRaw(64),
 	})
 	req := resource.CreateRequest{Plan: tfsdk.Plan{Schema: schema, Raw: planRaw}}
-	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: planRaw}}
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: pgNullStateRaw(t, ctx)}}
 
 	done := make(chan struct{})
 	go func() {
@@ -606,7 +609,7 @@ func TestCreateAdoptsCreatedPostgresAfterTransientLookupFailure(t *testing.T) {
 		"storage_size": numRaw(64),
 	})
 	req := resource.CreateRequest{Plan: tfsdk.Plan{Schema: schema, Raw: planRaw}}
-	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: planRaw}}
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: pgNullStateRaw(t, ctx)}}
 
 	done := make(chan struct{})
 	go func() {
@@ -660,7 +663,7 @@ func TestCreateBoundsStuckConfigHydrationByCreateTimeout(t *testing.T) {
 		"storage_size": numRaw(64),
 	})
 	req := resource.CreateRequest{Plan: tfsdk.Plan{Schema: schema, Raw: planRaw}}
-	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: planRaw}}
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: pgNullStateRaw(t, ctx)}}
 
 	done := make(chan struct{})
 	go func() {
@@ -674,6 +677,9 @@ func TestCreateBoundsStuckConfigHydrationByCreateTimeout(t *testing.T) {
 		}
 		if got := resp.Diagnostics.Errors()[0].Summary(); !strings.Contains(got, "Timeout while creating") {
 			t.Fatalf("a swallowed hydration deadline must surface as a create timeout, got %q", got)
+		}
+		if resp.State.Raw.IsNull() {
+			t.Errorf("a dispatch that committed must persist the partial state to track and taint the row")
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("Create ignored its create timeout on a stuck config hydration (it hung)")

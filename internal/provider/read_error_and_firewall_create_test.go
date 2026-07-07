@@ -77,7 +77,7 @@ func driveResourceCreate(t *testing.T, ctx context.Context, r resource.Resource,
 	schema, objType := resourceSchemaAndType(t, ctx, r)
 	raw := mkRawFromSchema(objType, overrides)
 	req := resource.CreateRequest{Plan: tfsdk.Plan{Schema: schema, Raw: raw}}
-	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: raw}}
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: tftypes.NewValue(objType, nil)}}
 	r.Create(ctx, req, resp)
 	return resp
 }
@@ -236,14 +236,9 @@ func TestCreateFirewallRuleRejectsMultiRuleResult(t *testing.T) {
 	if got := resp.Diagnostics.Errors()[0].Summary(); got != "Error parsing firewall rule response" {
 		t.Fatalf("summary = %q, want Error parsing firewall rule response", got)
 	}
-	// Create refuses before mapping, so id keeps the null plan value.
-	var state resource_firewall_rule.FirewallRuleModel
-	diags := resp.State.Get(ctx, &state)
-	if diags.HasError() {
-		t.Fatalf("reading state: %+v", diags)
-	}
-	if !state.Id.IsNull() {
-		t.Fatalf("a refused multi-rule create must not map a rule into state; id = %q", state.Id.ValueString())
+	// Create refuses before mapping, so no state is persisted.
+	if !resp.State.Raw.IsNull() {
+		t.Fatal("a refused multi-rule create must not map a rule into state")
 	}
 }
 

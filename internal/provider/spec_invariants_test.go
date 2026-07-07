@@ -27,34 +27,32 @@ func digMap(m map[string]any, keys ...string) map[string]any {
 	return m
 }
 
-// detailedMaintenanceWindow resolves the effective schema by oapi-codegen's allOf rule:
-// an inline overlay member that redeclares the property overrides the base $ref.
+// detailedMaintenanceWindow merges maintenance_window_start_at across the detailed response's flat
+// allOf: each member contributes it (a $ref member resolved one hop against components) and a later
+// member overrides an earlier one; it does not recurse into a nested allOf the spec does not use.
 func detailedMaintenanceWindow(spec map[string]any) map[string]any {
 	schema := digMap(spec, "components", "responses", "PostgresDatabase", "content", "application/json", "schema")
 	members := []any{schema}
 	if allOf, ok := schema["allOf"].([]any); ok {
 		members = allOf
 	}
-	baseRef := ""
+	var resolved map[string]any
 	for _, m := range members {
 		member, ok := m.(map[string]any)
 		if !ok {
 			continue
 		}
-		if mw, ok := digMap(member, "properties")["maintenance_window_start_at"].(map[string]any); ok {
-			return mw
-		}
+		props := digMap(member, "properties")
 		if ref, ok := member["$ref"].(string); ok {
-			baseRef = ref
+			if path, ok := strings.CutPrefix(ref, "#/"); ok {
+				props = digMap(spec, append(strings.Split(path, "/"), "properties")...)
+			}
+		}
+		if mw, ok := props["maintenance_window_start_at"].(map[string]any); ok {
+			resolved = mw
 		}
 	}
-	if path, ok := strings.CutPrefix(baseRef, "#/"); ok {
-		base := digMap(spec, append(strings.Split(path, "/"), "properties")...)
-		if mw, ok := base["maintenance_window_start_at"].(map[string]any); ok {
-			return mw
-		}
-	}
-	return nil
+	return resolved
 }
 
 func TestPostgresDetailedMaintenanceWindowNullable(t *testing.T) {
@@ -118,6 +116,72 @@ func TestDetailedMaintenanceWindowResolution(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			mw := detailedMaintenanceWindow(tc.spec)
+			if mw == nil {
+				t.Fatal("resolved nil")
+			}
+			if got, _ := mw["nullable"].(bool); got != tc.nullable {
+				t.Fatalf("effective nullable = %v, want %v", got, tc.nullable)
+			}
+		})
+	}
+}
+
+// wrapMultiRefResponse builds a detailed response whose allOf lists the given members verbatim
+// (each a $ref or an inline object) over the given component schemas, exercising the general
+// merge across multiple $ref bases rather than the single base + inline overlay shape.
+func wrapMultiRefResponse(schemas map[string]any, members []any) map[string]any {
+	return map[string]any{
+		"components": map[string]any{
+			"schemas": schemas,
+			"responses": map[string]any{"PostgresDatabase": map[string]any{
+				"content": map[string]any{"application/json": map[string]any{
+					"schema": map[string]any{"allOf": members},
+				}},
+			}},
+		},
+	}
+}
+
+func schemaRef(name string) map[string]any {
+	return map[string]any{"$ref": "#/components/schemas/" + name}
+}
+
+func TestDetailedMaintenanceWindowMergesMultipleRefBases(t *testing.T) {
+	nullableMW := map[string]any{"type": "integer", "nullable": true}
+	plainMW := map[string]any{"type": "integer"}
+	withMW := func(mw map[string]any) map[string]any {
+		return map[string]any{"properties": map[string]any{"maintenance_window_start_at": mw}}
+	}
+	noMW := map[string]any{"properties": map[string]any{"id": map[string]any{"type": "string"}}}
+
+	cases := []struct {
+		name     string
+		schemas  map[string]any
+		members  []any
+		nullable bool
+	}{
+		{
+			"property only in first of two ref bases",
+			map[string]any{"A": withMW(nullableMW), "B": noMW},
+			[]any{schemaRef("A"), schemaRef("B")},
+			true,
+		},
+		{
+			"later ref base overrides earlier",
+			map[string]any{"A": withMW(nullableMW), "B": withMW(plainMW)},
+			[]any{schemaRef("A"), schemaRef("B")},
+			false,
+		},
+		{
+			"inline overlay after multiple ref bases wins",
+			map[string]any{"A": withMW(plainMW), "B": noMW},
+			[]any{schemaRef("A"), schemaRef("B"), withMW(nullableMW)},
+			true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mw := detailedMaintenanceWindow(wrapMultiRefResponse(tc.schemas, tc.members))
 			if mw == nil {
 				t.Fatal("resolved nil")
 			}

@@ -142,7 +142,7 @@ func runStuckPostCreate(t *testing.T, planOver map[string]tftypes.Value) (string
 	schema := resource_postgres.PostgresResourceSchema(ctx)
 	planRaw := mkPGRaw(t, ctx, planOver)
 	req := resource.CreateRequest{Plan: tfsdk.Plan{Schema: schema, Raw: planRaw}}
-	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: planRaw}}
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: pgNullStateRaw(t, ctx)}}
 
 	done := make(chan struct{})
 	go func() {
@@ -172,6 +172,9 @@ func TestCreateBoundsStuckReadReplicaPostByCreateTimeout(t *testing.T) {
 	if got := resp.Diagnostics.Errors()[0].Summary(); !strings.Contains(got, "Timeout while creating") {
 		t.Fatalf("summary = %q, want a create-timeout classification", got)
 	}
+	if !resp.State.Raw.IsNull() {
+		t.Errorf("a stuck read-replica POST the server never accepted must persist no state")
+	}
 }
 
 func TestCreateBoundsStuckRestorePostByCreateTimeout(t *testing.T) {
@@ -188,14 +191,21 @@ func TestCreateBoundsStuckRestorePostByCreateTimeout(t *testing.T) {
 	if got := resp.Diagnostics.Errors()[0].Summary(); !strings.Contains(got, "Timeout while creating") {
 		t.Fatalf("summary = %q, want a create-timeout classification", got)
 	}
+	if !resp.State.Raw.IsNull() {
+		t.Errorf("a stuck restore POST the server never accepted must persist no state")
+	}
 }
 
 func TestCreateClassifiesParentCancelAsCancelled(t *testing.T) {
-	// The capturing fake ignores ctx; a real transport honors cancellation, so the
-	// dispatch POST fails at RoundTrip under the pre-cancelled parent.
+	withFastPoll(t)
+	withFastAdoptBudget(t, 50*time.Millisecond)
+	// A pre-cancelled parent never sends the POST, so nothing of ours committed; the fresh row this
+	// server would answer is a foreign database, and the salvage must be skipped, not adopt it.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Never reached: the cancelled opCtx aborts the request before it is sent.
-		w.WriteHeader(http.StatusOK)
+		body := pgBodyForState(postgresStateRunning)
+		body.Name = "tf-acc-pg"
+		body.CreatedAt = time.Now()
+		writePGJSON(w, http.StatusOK, body)
 	}))
 	defer srv.Close()
 
@@ -208,7 +218,7 @@ func TestCreateClassifiesParentCancelAsCancelled(t *testing.T) {
 		"storage_size": numRaw(64),
 	})
 	req := resource.CreateRequest{Plan: tfsdk.Plan{Schema: schema, Raw: planRaw}}
-	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: planRaw}}
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: schema, Raw: pgNullStateRaw(t, buildCtx)}}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // already cancelled: the dispatch must fail and classify as cancellation
@@ -223,6 +233,9 @@ func TestCreateClassifiesParentCancelAsCancelled(t *testing.T) {
 	}
 	if strings.Contains(got, "Timeout") {
 		t.Fatalf("summary = %q, must NOT be a timeout classification (raising timeouts.create cannot help a cancelled run)", got)
+	}
+	if !resp.State.Raw.IsNull() {
+		t.Error("a pre-cancelled create never sent its POST; a fresh foreign row must not be adopted")
 	}
 }
 
@@ -382,12 +395,8 @@ func TestCreateFailsClosedOnEmptyBody(t *testing.T) {
 	if got := resp.Diagnostics.Errors()[0].Summary(); got != "Empty response creating postgres database" {
 		t.Fatalf("summary = %q, want Empty response creating postgres database", got)
 	}
-	var out resource_postgres.PostgresModel
-	if diags := resp.State.Get(ctx, &out); diags.HasError() {
-		t.Fatalf("state get: %+v", diags)
-	}
-	if !out.Id.IsNull() {
-		t.Errorf("a genuinely-absent create must persist no id, got %q", out.Id.ValueString())
+	if !resp.State.Raw.IsNull() {
+		t.Errorf("a genuinely-absent create must persist no state")
 	}
 }
 
@@ -457,16 +466,16 @@ func TestCreateAdoptsOnNonJSON200NotOnHTTPError(t *testing.T) {
 			if got := resp.Diagnostics.Errors()[0].Summary(); got != c.wantSummary {
 				t.Fatalf("summary = %q, want %q", got, c.wantSummary)
 			}
-			var out resource_postgres.PostgresModel
-			if diags := resp.State.Get(ctx, &out); diags.HasError() {
-				t.Fatalf("state get: %+v", diags)
-			}
 			if c.wantAdopt {
+				var out resource_postgres.PostgresModel
+				if diags := resp.State.Get(ctx, &out); diags.HasError() {
+					t.Fatalf("state get: %+v", diags)
+				}
 				if out.Id.ValueString() != sampleID {
 					t.Errorf("adopted state id = %q, want the created row %q", out.Id.ValueString(), sampleID)
 				}
-			} else if !out.Id.IsNull() {
-				t.Errorf("no adoption expected, but state persisted id %q", out.Id.ValueString())
+			} else if !resp.State.Raw.IsNull() {
+				t.Errorf("no adoption expected, but state was persisted")
 			}
 		})
 	}

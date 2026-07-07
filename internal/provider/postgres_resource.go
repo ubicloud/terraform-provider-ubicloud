@@ -282,6 +282,10 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 	// restore is checked first: a restore also sets parent; only read_replica differs in response.
 	// Stamp before endpoint selection so every adopt path has a valid non-zero lower bound.
 	dispatchAt := time.Now()
+	// Gate salvage on the parent being live at dispatch: one cancelled beforehand never sent the
+	// POST, so a fresh row could only be foreign. Like the created_at skew this narrows, not closes,
+	// the window (a cancel racing the wire send is unclosable here without a server idempotency key).
+	parentLiveAtDispatch := ctx.Err() == nil
 	var postgresd *ubicloud_client.PostgresDatabase
 	var diags diag.Diagnostics
 	switch {
@@ -297,8 +301,10 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 	}
 	if diags.HasError() {
 		if opd := postgresOpContextDiags(opCtx, ctx, "creating", "create", postgresResourceLogIdentifier(&state), createTimeout); opd != nil {
-			// The POST may have committed server-side; adopt so the row is tracked, not orphaned.
-			r.adoptCreatedPostgres(ctx, dispatchAt, &state, resp)
+			if parentLiveAtDispatch {
+				// The POST may have committed server-side; adopt so the row is tracked, not orphaned.
+				r.adoptCreatedPostgres(ctx, dispatchAt, &state, resp)
+			}
 			resp.Diagnostics.Append(opd...)
 			return
 		}
@@ -376,10 +382,12 @@ func (r *postgresResource) Create(ctx context.Context, req resource.CreateReques
 // 200): the server may have committed, so a bounded lookup adopts the row, but only one whose
 // created_at is at or after dispatchAt less clock skew; an older row is a foreign database.
 func (r *postgresResource) adoptCreatedPostgres(parentCtx context.Context, dispatchAt time.Time, state *resource_postgres.PostgresModel, resp *resource.CreateResponse) {
-	if parentCtx.Err() != nil {
-		return
-	}
-	budgetCtx, cancel := context.WithTimeout(parentCtx, postgresAdoptLookupBudget)
+	// parentCtx may be cancelled (a graceful stop racing a committed create); WithoutCancel keeps
+	// the bounded lookup reachable so it rides out a read-after-write miss or transient blip, and
+	// core persists the adopted state past the cancel. Aborting the poll on the cancel would orphan
+	// the row being salvaged, so the adopt budget, not the cancel, bounds the wait.
+	lookupCtx := context.WithoutCancel(parentCtx)
+	budgetCtx, cancel := context.WithTimeout(lookupCtx, postgresAdoptLookupBudget)
 	defer cancel()
 	for {
 		postgresResp, err := r.uc.client.GetPostgresDatabaseDetailsWithResponse(budgetCtx, state.ProjectId.ValueString(), state.Location.ValueString(), state.Name.ValueString())
@@ -388,12 +396,12 @@ func (r *postgresResource) adoptCreatedPostgres(parentCtx context.Context, dispa
 			if postgresResp.JSON200.CreatedAt.Before(dispatchAt.Add(-postgresAdoptClockSkew)) {
 				return
 			}
-			if mapDiags := setPostgresStateResource(parentCtx, postgresResp.JSON200, state); mapDiags.HasError() {
+			if mapDiags := setPostgresStateResource(lookupCtx, postgresResp.JSON200, state); mapDiags.HasError() {
 				resp.Diagnostics.Append(mapDiags...)
 				return
 			}
 			ensurePostgresConfigKnown(state)
-			resp.Diagnostics.Append(resp.State.Set(parentCtx, state)...)
+			resp.Diagnostics.Append(resp.State.Set(lookupCtx, state)...)
 			return
 		}
 		select {
