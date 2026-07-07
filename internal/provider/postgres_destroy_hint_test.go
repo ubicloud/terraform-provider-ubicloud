@@ -68,24 +68,6 @@ func TestModifyPlanVersionCombinedHintNamesDestroyEscapes(t *testing.T) {
 	}
 }
 
-// The blank-parent update guard blocks the destroy pre-walk under a stale config, so it must name
-// the destroy escapes too.
-func TestModifyPlanBlankParentUpdateHintNamesDestroyEscapes(t *testing.T) {
-	ctx := t.Context()
-	resp := driveModifyPlan(t, ctx,
-		map[string]tftypes.Value{"parent": strRaw("tf-acc-src")},
-		map[string]tftypes.Value{"parent": strRaw("")},
-	)
-	if !resp.Diagnostics.HasError() {
-		t.Fatal("blank parent must be rejected at plan time")
-	}
-	detail := pgJoinDetails(resp.Diagnostics)
-	assertStaleConfigHint(t, detail)
-	if !strings.Contains(detail, "omit parent") {
-		t.Errorf("blank-parent guard must advise omitting parent; got:\n%s", detail)
-	}
-}
-
 // A tags change on a read replica is rejected; the detail must name the destroy escapes.
 func TestModifyPlanReplicaTagsHintNamesDestroyEscapes(t *testing.T) {
 	ctx := t.Context()

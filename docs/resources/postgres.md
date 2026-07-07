@@ -139,6 +139,10 @@ restore inherits, remove it from the configuration), or run
 without re-planning the stale configuration (`terraform plan -destroy -refresh=false`
 previews the same without deleting).
 
+A blank `parent` is the exception: it fails config validation, which runs on every
+operation regardless of `-refresh`, so `-refresh=false` does not skip it. Omit
+`parent`, or set it to a non-blank source database, to proceed.
+
 ## Import
 
 Import is supported using the following syntax:

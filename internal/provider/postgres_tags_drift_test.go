@@ -271,8 +271,9 @@ func TestPlanModifiersJqChainHygiene(t *testing.T) {
 	descConflictsParent := stringvalidator.ConflictsWith(path.MatchRoot("parent")).Description(ctx)
 	descAlsoRequiresParent := stringvalidator.AlsoRequires(path.MatchRoot("parent")).Description(ctx)
 	descRFC3339 := validators.RFC3339().Description(ctx)
+	descNotBlank := validators.NotBlank().Description(ctx)
 	injectedVal := func(d string) bool {
-		return d == descConflictsParent || d == descAlsoRequiresParent || d == descRFC3339
+		return d == descConflictsParent || d == descAlsoRequiresParent || d == descRFC3339 || d == descNotBlank
 	}
 
 	assertRows(blocks[1], "plan modifier", func(a schema.Attribute) []string { return postgresPlanModifierDescriptions(ctx, a) }, injectedPM)

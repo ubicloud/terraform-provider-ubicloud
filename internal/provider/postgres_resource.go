@@ -47,16 +47,9 @@ func (r *postgresResource) ModifyPlan(ctx context.Context, req resource.ModifyPl
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		// Mutually exclusive shapes; a blank parent draws one clear error rather than silently
-		// creating a primary (postgresHasParent trims a blank parent to unset).
-		parentBlank := postgresParentBlank(config.Parent)
+		// A set parent selects a replica or restore, whose child bodies inherit size/version and
+		// so reject them here; validators.NotBlank() already rejected a KNOWN blank parent.
 		switch {
-		case parentBlank:
-			resp.Diagnostics.AddAttributeError(
-				path.Root("parent"),
-				"Blank parent",
-				"parent cannot be blank; omit it to create a primary database, or set it to the source database to restore from or replicate.",
-			)
 		case postgresHasParent(&config):
 			// Both child create bodies take size/storage_size/version from the source and force
 			// ha_type to none; a static ConflictsWith(parent) could not free a restored primary.
@@ -85,17 +78,6 @@ func (r *postgresResource) ModifyPlan(ctx context.Context, req resource.ModifyPl
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	// An explicit blank parent differs from prior, so it would plan a replace that fails only at
-	// apply. Clearing parent would be promote-read-replica, which is not wired; reject at plan.
-	if postgresParentBlank(config.Parent) {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("parent"),
-			"Blank parent",
-			"parent cannot be blank; omit it to keep the current database. This provider does not support clearing parent to promote a read replica."+postgresStaleConfigHint("omit parent"),
-		)
 		return
 	}
 

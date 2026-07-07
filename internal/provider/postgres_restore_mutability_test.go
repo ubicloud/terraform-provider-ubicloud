@@ -211,36 +211,6 @@ func TestUpdateRestoredPrimaryResizeDispatchesPatch(t *testing.T) {
 	}
 }
 
-// postgresHasParent treats a blank parent as unset, so without this guard a blank-parent
-// config would silently dispatch createPostgresPrimary; the error must be drawn alone.
-func TestModifyPlanCreateRejectsBlankParent(t *testing.T) {
-	ctx := t.Context()
-	r := &postgresResource{}
-	schema := resource_postgres.PostgresResourceSchema(ctx)
-	objType := postgresResourceSchemaObjType(t, ctx)
-	modifyCreate := func(overrides map[string]tftypes.Value) resource.ModifyPlanResponse {
-		req := resource.ModifyPlanRequest{
-			State:  tfsdk.State{Schema: schema, Raw: tftypes.NewValue(objType, nil)}, // null state = create
-			Config: tfsdk.Config{Schema: schema, Raw: postgresRaw(t, ctx, overrides)},
-		}
-		resp := resource.ModifyPlanResponse{}
-		r.ModifyPlan(ctx, req, &resp)
-		return resp
-	}
-	cases := map[string]map[string]tftypes.Value{
-		"blank, no size":       {"parent": strRaw("   ")},
-		"blank with size":      {"parent": strRaw("   "), "size": strRaw("m8gd.large")},
-		"blank restore source": {"parent": strRaw(""), "restore_target": strRaw("2026-06-24T11:00:00Z")},
-	}
-	for name, over := range cases {
-		resp := modifyCreate(over)
-		errs := resp.Diagnostics.Errors()
-		if len(errs) != 1 || errs[0].Summary() != "Blank parent" {
-			t.Errorf("%s: want exactly one \"Blank parent\" error, got %+v", name, resp.Diagnostics)
-		}
-	}
-}
-
 // tags rides the PATCH route the backend forbids on a replica, but is a valid replica
 // CREATE input, so the lock keys on a CHANGE, not mere presence.
 func TestModifyPlanReadReplicaLocksTagsChange(t *testing.T) {

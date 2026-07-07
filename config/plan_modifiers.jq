@@ -56,6 +56,19 @@ def rfc3339:
     }
   };
 
+# validators.NotBlank() rejects a KNOWN blank parent at config validation, replacing the two
+# ModifyPlan arms that each re-checked it; null/unknown skip so an interpolated blank still
+# defers to Create's apply-time backstop.
+def notblank:
+  {
+    custom: {
+      imports: [
+        { path: "github.com/ubicloud/terraform-provider-ubicloud/internal/validators" }
+      ],
+      schema_definition: "validators.NotBlank()"
+    }
+  };
+
 # Append only validators not already present, so re-applying this filter is a no-op; the
 # codegen's own typed validators (e.g. version's OneOf) are preserved.
 def add_validators($existing; $news):
@@ -116,6 +129,8 @@ def add_validators($existing; $news):
   if .name == "flavor" or .name == "private_subnet_name"
     then .string.validators = add_validators(.string.validators; [cw("stringvalidator")])
   elif .name == "restrict_by_default" then .bool.validators = add_validators(.bool.validators; [cw("boolvalidator")])
+  # A KNOWN blank parent is rejected at config validation, before the create/update plan paths.
+  elif .name == "parent" then .string.validators = add_validators(.string.validators; [notblank])
   # restore_target requires parent (the restore source) and a valid RFC 3339 value.
   elif .name == "restore_target" then .string.validators = add_validators(.string.validators; [ar("stringvalidator"), rfc3339])
   else . end

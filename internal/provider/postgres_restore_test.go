@@ -80,8 +80,8 @@ func TestPostgresHasRestoreTarget(t *testing.T) {
 	}
 }
 
-// A restore inherits size from the source, so the primary-size guard must not fire; a
-// blank parent must be rejected before it becomes POST .../postgres//restore at apply.
+// A restore inherits size from the source, so the primary-size guard must not fire for a
+// restore config (parent + restore_target, no size).
 func TestPostgresModifyPlanRestore(t *testing.T) {
 	ctx := t.Context()
 	r := &postgresResource{}
@@ -105,14 +105,6 @@ func TestPostgresModifyPlanRestore(t *testing.T) {
 	}
 	if d := modifyCreate(validRestore); d.HasError() {
 		t.Errorf("valid restore (parent+restore_target, no size): unexpected error: %+v", d)
-	}
-
-	blankParent := map[string]tftypes.Value{
-		"parent":         tftypes.NewValue(tftypes.String, "   "),
-		"restore_target": target,
-	}
-	if d := modifyCreate(blankParent); !d.HasError() {
-		t.Error("restore_target with a blank parent: expected a plan-time error, got none")
 	}
 
 	// With parent null ModifyPlan stays silent: the schema-level AlsoRequires(parent) is the
