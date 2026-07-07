@@ -11,7 +11,7 @@ func TestAccFirewallDataSource(t *testing.T) {
 	resName := GetRandomResourceName("fw")
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		PreCheck:                 func() { TestAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		Steps: []resource.TestStep{
 			{
 				Config: providerConfig +

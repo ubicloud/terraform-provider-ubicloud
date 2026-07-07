@@ -82,6 +82,15 @@ func (r *projectResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
+	// A non-JSON 200 (proxy interposition) leaves JSON200 nil; fail closed rather than nil-deref.
+	if projectResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Empty response creating project",
+			fmt.Sprintf("the API returned no project body: name=%s", state.Name.ValueString()),
+		)
+		return
+	}
+
 	state.Id = types.StringValue(projectResp.JSON200.Id)
 	state.Name = types.StringValue(projectResp.JSON200.Name)
 	state.Discount = types.Int64Value(int64(projectResp.JSON200.Discount))
@@ -108,10 +117,26 @@ func (r *projectResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
+	if projectResp.StatusCode() == http.StatusNotFound {
+		// Gone server-side: drop from state so the next plan converges instead of erroring.
+		tflog.Debug(ctx, fmt.Sprintf("Project not found, removing from state: project_id=%s", state.Id.ValueString()))
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	if projectResp.StatusCode() != http.StatusOK {
 		resp.Diagnostics.AddError(
 			"Unexpected HTTP status code reading project",
 			fmt.Sprintf("Received %s for project: project_id=%s. Details: %s", projectResp.Status(), state.Id.ValueString(), projectResp.Body))
+		return
+	}
+
+	// A non-JSON 200 leaves JSON200 nil; not a 404, so fail closed without RemoveResource.
+	if projectResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Empty response reading project",
+			fmt.Sprintf("the API returned no project body: project_id=%s", state.Id.ValueString()),
+		)
 		return
 	}
 

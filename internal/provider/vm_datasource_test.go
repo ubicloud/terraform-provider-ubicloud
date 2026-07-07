@@ -11,7 +11,7 @@ func TestAccVmDataSource(t *testing.T) {
 	resName := GetRandomResourceName("vm")
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		PreCheck:                 func() { TestAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheck(t); requireAccEnv(t, "UBICLOUD_ACC_TEST_PRIVATE_SUBNET") },
 		Steps: []resource.TestStep{
 			{
 				Config: providerConfig +

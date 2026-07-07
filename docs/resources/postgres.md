@@ -31,6 +31,14 @@ resource "ubicloud_postgres" "example" {
   name         = "pg-example"
   size         = "standard-4"
   storage_size = 512
+
+  # Tags are managed only when configured here. If you omit this block, the provider
+  # does not track server-side tags, so tags added out of band (including those a
+  # point-in-time restore inherits from its parent) stay invisible and never cause a
+  # perpetual plan diff. Configure tags to manage and reconcile them.
+  tags = [
+    { key = "environment", value = "production" },
+  ]
 }
 ```
 
@@ -42,19 +50,46 @@ resource "ubicloud_postgres" "example" {
 - `location` (String) Location of the Postgres database
 - `name` (String) Name of the Postgres database
 - `project_id` (String) ID of the project
-- `size` (String) Requested size for the underlying VM
 
 ### Optional
 
 - `flavor` (String) Kind of database
 - `ha_type` (String) High availability type
+- `maintenance_window_start_at` (Number) Maintenance window start time. Start hour (0-23). Once set, removing this argument keeps the last value; Terraform cannot clear the window (unset it out of band).
+- `parent` (String) Parent Postgres database. Give the parent database's name or id. The API reports the parent by name, so an imported read replica whose parent is configured by id plans a spurious replace; configure parent by name to avoid it.
 - `pg_config` (Map of String)
 - `pgbouncer_config` (Map of String)
 - `private_subnet_name` (String) Name for the private subnet (if not provided, a name will be auto-generated)
+- `restore_target` (String) RFC 3339 timestamp of the point in time to restore to, which must fall within the source database's backup window [earliest_restore_time, latest_restore_time]. Setting it (with parent as the source database) creates this database as a point-in-time restore off the parent instead of a fresh database. The restored database is a full primary, not a read replica, so it can be resized, HA-changed, and version-upgraded in place. Write-only create input: it is not read back from the API, so an imported database shows restore_target unset and setting it in config after import forces replacement.
 - `restrict_by_default` (Boolean) Whether to restrict access by default (if so, firewall rules must be added to access)
+- `size` (String) Requested size for the underlying VM
 - `storage_size` (Number) Requested storage size in GiB
 - `tags` (Attributes List) Tags for the Postgres Database (see [below for nested schema](#nestedatt--tags))
+- `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `version` (String) PostgreSQL version
+
+### Read-Only
+
+- `ca_certificates` (String) CA certificates of the root CA used to issue postgres server certificates
+- `connection_string` (String, Sensitive) Connection string to the Postgres database
+- `created_at` (String) Creation timestamp of the Postgres database
+- `earliest_restore_time` (String) Earliest restore time (if primary)
+- `fallback_active` (Boolean) Whether the primary server is running on a fallback instance type
+- `firewall_rules` (Attributes List) List of Postgres firewall rules (see [below for nested schema](#nestedatt--firewall_rules))
+- `hostname` (String) Hostname for the Postgres database
+- `id` (String) ID of the Postgres database
+- `latest_restore_time` (String) Latest restore time (if primary)"
+- `password` (String, Sensitive) Password for the Postgres database
+- `primary` (Boolean) Is the database primary
+- `read_replica` (Boolean) If the database is a read replica or not
+- `state` (String) State of the Postgres database
+- `storage_size_gib` (Number) Storage size in GiB
+- `target_server_count` (Number) Target number of servers (primary + standbys)
+- `target_storage_size_gib` (Number) Desired storage size in GiB
+- `target_version` (String) Target Postgres version
+- `target_vm_size` (String) Desired VM size
+- `username` (String) Username for the Postgres database
+- `vm_size` (String) Size of the underlying VM
 
 <a id="nestedatt--tags"></a>
 ### Nested Schema for `tags`
@@ -63,6 +98,50 @@ Required:
 
 - `key` (String) Key of the Postgres tag
 - `value` (String) Value of the Postgres tag
+
+
+<a id="nestedblock--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+
+
+<a id="nestedatt--firewall_rules"></a>
+### Nested Schema for `firewall_rules`
+
+Read-Only:
+
+- `cidr` (String) CIDR of the firewall rule
+- `description` (String) Port information for the firewall rule
+- `id` (String) ID of the firewall rule
+- `port` (Number) Port for the Postgres firewall rule
+
+## Destroying with drifted configuration
+
+`terraform destroy` defaults to `-refresh=true`, which re-plans the current
+configuration against refreshed state before deleting. When the configuration has
+drifted from the server, that pre-destroy plan is evaluated as a normal update, so
+the same plan-time guards apply and can reject the destroy with a plan-time error.
+The most common trigger is `version`: after an in-place major upgrade the server
+reports a newer major than a `version` still pinned to the old one in configuration
+(often a variable default), so the pre-destroy plan reads as an unsupported
+downgrade. The read replica and parent guards reject a drifted pre-destroy plan the
+same way.
+
+This is expected; the provider keeps rejecting unsupported changes even on the way
+to a destroy. To proceed, either reconcile the drifted argument the error names (for
+`version`, set it to the server's current major; for an argument a read replica or
+restore inherits, remove it from the configuration), or run
+`terraform destroy -refresh=false`, which skips the pre-destroy refresh and deletes
+without re-planning the stale configuration (`terraform plan -destroy -refresh=false`
+previews the same without deleting).
+
+A blank `parent` is the exception: it fails config validation, which runs on every
+operation regardless of `-refresh`, so `-refresh=false` does not skip it. Omit
+`parent`, or set it to a non-blank source database, to proceed.
 
 ## Import
 

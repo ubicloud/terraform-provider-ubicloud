@@ -89,6 +89,15 @@ func (r *privateSubnetResource) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
+	// A non-JSON 200 (proxy interposition) leaves JSON200 nil; fail closed rather than nil-deref.
+	if privateSubnetResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Empty response creating private subnet",
+			fmt.Sprintf("the API returned no private subnet body: %s", privateSubnetResourceLogIdentifier(&state)),
+		)
+		return
+	}
+
 	diags := setPrivateSubnetStateResource(ctx, privateSubnetResp.JSON200, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -116,10 +125,26 @@ func (r *privateSubnetResource) Read(ctx context.Context, req resource.ReadReque
 		return
 	}
 
+	if privateSubnetResp.StatusCode() == http.StatusNotFound {
+		// Gone server-side: drop from state so the next plan converges instead of erroring.
+		tflog.Debug(ctx, fmt.Sprintf("Private subnet not found, removing from state: %s", privateSubnetResourceLogIdentifier(&state)))
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	if privateSubnetResp.StatusCode() != http.StatusOK {
 		resp.Diagnostics.AddError(
 			"Unexpected HTTP status code reading private subnet",
 			fmt.Sprintf("Received %s for private subnet %s. Details: %s", privateSubnetResp.Status(), privateSubnetResourceLogIdentifier(&state), privateSubnetResp.Body))
+		return
+	}
+
+	// A non-JSON 200 leaves JSON200 nil; not a 404, so fail closed without RemoveResource.
+	if privateSubnetResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Empty response reading private subnet",
+			fmt.Sprintf("the API returned no private subnet body: %s", privateSubnetResourceLogIdentifier(&state)),
+		)
 		return
 	}
 

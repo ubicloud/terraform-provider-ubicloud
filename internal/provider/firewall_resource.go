@@ -87,6 +87,15 @@ func (r *firewallResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
+	// A non-JSON 200 (proxy interposition) leaves JSON200 nil; fail closed rather than nil-deref.
+	if firewallResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Empty response creating firewall",
+			fmt.Sprintf("the API returned no firewall body: %s", firewallResourceLogIdentifier(&state)),
+		)
+		return
+	}
+
 	state.Id = types.StringValue(firewallResp.JSON200.Id)
 	state.Name = types.StringValue(firewallResp.JSON200.Name)
 	state.Description = types.StringValue(firewallResp.JSON200.Description)
@@ -120,10 +129,26 @@ func (r *firewallResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
+	if firewallResp.StatusCode() == http.StatusNotFound {
+		// Gone server-side: drop from state so the next plan converges instead of erroring.
+		tflog.Debug(ctx, fmt.Sprintf("Firewall not found, removing from state: %s", firewallResourceLogIdentifier(&state)))
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	if firewallResp.StatusCode() != http.StatusOK {
 		resp.Diagnostics.AddError(
 			"Unexpected HTTP status code reading firewall",
 			fmt.Sprintf("Received %s for firewall: %s. Details: %s", firewallResp.Status(), firewallResourceLogIdentifier(&state), firewallResp.Body))
+		return
+	}
+
+	// A non-JSON 200 leaves JSON200 nil; not a 404, so fail closed without RemoveResource.
+	if firewallResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Empty response reading firewall",
+			fmt.Sprintf("the API returned no firewall body: %s", firewallResourceLogIdentifier(&state)),
+		)
 		return
 	}
 

@@ -12,18 +12,21 @@ func TestAccPostgresResource(t *testing.T) {
 	resName := GetRandomResourceName("pg")
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { testAccPreCheck(t) },
 		Steps: []resource.TestStep{
-			// Test Create and Read
+			// Test Create and Read, with a configured maintenance window (dispatched through the
+			// separate POST .../set-maintenance-window after the database exists and read back).
 			{
 				Config: providerConfig +
 					fmt.Sprintf(`
         resource "ubicloud_postgres" "testacc" {
-          project_id   = "%s"
-          location     = "%s"
-          name         = "%s"
-          size         = "standard-2"
-		  storage_size = "64"
-		  version      = "17"
+          project_id                  = "%s"
+          location                    = "%s"
+          name                        = "%s"
+          size                        = "standard-2"
+		  storage_size                = "64"
+		  version                     = "17"
+		  maintenance_window_start_at = 3
         }`, GetTestAccProjectId(), GetTestAccLocation(), resName),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "project_id", GetTestAccProjectId()),
@@ -33,6 +36,25 @@ func TestAccPostgresResource(t *testing.T) {
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "ha_type", "none"),
 					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "version", "17"),
 					resource.TestCheckResourceAttrSet("ubicloud_postgres.testacc", "storage_size"),
+					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "maintenance_window_start_at", "3"),
+				),
+			},
+			// Test Update: change only the maintenance window (dispatched through the same POST,
+			// read back). Nothing else changes, so no PATCH/upgrade/rename fires.
+			{
+				Config: providerConfig +
+					fmt.Sprintf(`
+        resource "ubicloud_postgres" "testacc" {
+          project_id                  = "%s"
+          location                    = "%s"
+          name                        = "%s"
+          size                        = "standard-2"
+		  storage_size                = "64"
+		  version                     = "17"
+		  maintenance_window_start_at = 5
+        }`, GetTestAccProjectId(), GetTestAccLocation(), resName),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ubicloud_postgres.testacc", "maintenance_window_start_at", "5"),
 				),
 			},
 			// Test ImportState

@@ -77,6 +77,15 @@ func (d *projectDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
+	// A non-JSON 200 (proxy interposition) leaves JSON200 nil; fail closed rather than nil-deref.
+	if projectResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Empty response reading project",
+			fmt.Sprintf("the API returned no project body: project_id=%s", state.Id.ValueString()),
+		)
+		return
+	}
+
 	state.Id = types.StringValue(projectResp.JSON200.Id)
 	state.Name = types.StringValue(projectResp.JSON200.Name)
 	state.Discount = types.Int64Value(int64(projectResp.JSON200.Discount))

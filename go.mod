@@ -6,6 +6,7 @@ module github.com/ubicloud/terraform-provider-ubicloud
 // * .tool-versions
 // * .github/workflows/test.yml
 go 1.26.0
+
 toolchain go1.26.4
 
 replace github.com/deepmap/oapi-codegen/v2 => github.com/oapi-codegen/oapi-codegen/v2 v2.5.0
@@ -15,6 +16,7 @@ require (
 	github.com/hashicorp/terraform-plugin-codegen-openapi v0.3.0
 	github.com/hashicorp/terraform-plugin-docs v0.19.4
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
+	github.com/hashicorp/terraform-plugin-framework-timeouts v0.7.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
 	github.com/hashicorp/terraform-plugin-go v0.31.0
 	github.com/hashicorp/terraform-plugin-log v0.10.0

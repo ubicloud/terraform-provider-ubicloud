@@ -82,6 +82,15 @@ func (d *firewallRuleDataSource) Read(ctx context.Context, req datasource.ReadRe
 		return
 	}
 
+	// A non-JSON 200 (proxy interposition) leaves JSON200 nil; fail closed rather than nil-deref.
+	if firewallRuleResp.JSON200 == nil {
+		resp.Diagnostics.AddError(
+			"Empty response reading firewall rule",
+			fmt.Sprintf("the API returned no firewall rule body: %s", firewallRuleDataSourceLogIdentifier(&state)),
+		)
+		return
+	}
+
 	state.Id = types.StringValue(firewallRuleResp.JSON200.Id)
 	state.Cidr = types.StringValue(firewallRuleResp.JSON200.Cidr)
 	state.PortRange = types.StringValue(firewallRuleResp.JSON200.PortRange)
@@ -96,8 +105,8 @@ func GetFirewallRulesState(ctx context.Context, firewallRules []ubicloud_client.
 	if len(firewallRules) > 0 {
 		for _, r := range firewallRules {
 			fr := datasource_vm.NewFirewallRulesValueMust(firewallRulesValue.AttributeTypes(ctx), map[string]attr.Value{
-				"id":        types.StringValue(r.Id),
-				"cidr":      types.StringValue(r.Cidr),
+				"id":         types.StringValue(r.Id),
+				"cidr":       types.StringValue(r.Cidr),
 				"port_range": types.StringValue(r.PortRange),
 			})
 			firewallRulesValues = append(firewallRulesValues, fr)
