@@ -91,6 +91,20 @@ func postgresUpgradeInFlight(plan, state *resource_postgres.PostgresModel) bool 
 		state.TargetVersion.ValueString() != state.Version.ValueString()
 }
 
+// A dispatched upgrade (running or failed) leaves version behind target_version; a config still
+// pinned to that OLD version is a silent no-op now that flips to a rejected downgrade on
+// convergence. Key on config, not the USFU-pinned plan, so an omitted version self-heals.
+func postgresUpgradeConfigLags(config, state *resource_postgres.PostgresModel) bool {
+	if state.TargetVersion.IsNull() || state.TargetVersion.IsUnknown() {
+		return false
+	}
+	if config.Version.IsNull() || config.Version.IsUnknown() {
+		return false
+	}
+	return state.TargetVersion.ValueString() != state.Version.ValueString() &&
+		config.Version.ValueString() == state.Version.ValueString()
+}
+
 // FAILS CLOSED: proceed only on a positively read non-failed status; an unreadable status
 // raises rather than re-masking a failed upgrade. The endpoint's sole 400 is "Database is
 // not upgrading", which means the upgrade already converged (success).

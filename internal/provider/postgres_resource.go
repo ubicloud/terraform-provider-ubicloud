@@ -138,6 +138,18 @@ func (r *postgresResource) ModifyPlan(ctx context.Context, req resource.ModifyPl
 		}
 	}
 
+	// A dispatched upgrade (target_version ahead of version, running or failed) makes a config still
+	// pinned to the lagging version a silent no-op; a replace recreates fresh, so it is moot.
+	if !postgresPlanIsReplace(&plan, &state) && postgresUpgradeConfigLags(&config, &state) {
+		target := state.TargetVersion.ValueString()
+		resp.Diagnostics.AddAttributeError(
+			path.Root("version"),
+			"Postgres version upgrade pending",
+			fmt.Sprintf("The server's target_version %[1]s is ahead of version %[2]s: a major upgrade to %[1]s has been dispatched (it may be running or failed) while this config still pins %[2]s. The plan silently ignores it now and errors as a downgrade if the server converges to %[1]s.", target, state.Version.ValueString())+
+				postgresStaleConfigHint(fmt.Sprintf("set version to the pending target (version = %q)", target)))
+		return
+	}
+
 	// A replace recreates the database fresh at the planned version, so the in-place upgrade
 	// guards do not apply; Update's own guards still cover an immutable resolving to a no-op.
 	if !postgresPlanIsReplace(&plan, &state) && postgresAttrChanged(plan.Version, state.Version) {

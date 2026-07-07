@@ -137,3 +137,21 @@ func TestModifyPlanParentReplaceRejectHintNamesDestroyEscapes(t *testing.T) {
 		t.Errorf("parent-replace reject guard must advise removing the argument; got:\n%s", detail)
 	}
 }
+
+// A config pinned to the lagging version during a pending upgrade blocks the destroy pre-walk,
+// so its detail must name the destroy escapes and the pending target for a copy-paste realignment.
+func TestModifyPlanInflightUpgradeHintNamesDestroyEscapes(t *testing.T) {
+	ctx := t.Context()
+	resp := driveModifyPlan(t, ctx,
+		map[string]tftypes.Value{"version": strRaw("16"), "target_version": strRaw("17")},
+		map[string]tftypes.Value{"version": strRaw("16")},
+	)
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("stale config during a pending upgrade must be rejected at plan time")
+	}
+	detail := pgJoinDetails(resp.Diagnostics)
+	assertStaleConfigHint(t, detail)
+	if !strings.Contains(detail, `version = "17"`) {
+		t.Errorf("pending-upgrade guard must print the target version for realignment; got:\n%s", detail)
+	}
+}
